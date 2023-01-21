@@ -1,0 +1,115 @@
+[ T i t l e ]
+Sample input for muon transport
+
+[ P a r a m e t e r s ]
+   icntl = 0		   # (D=0) 3:ECH 5:NOR 6:SRC 7,8:GSH 11:DSH 12:DUMP
+  maxcas = 200		   # (D=10) number of particles per one batch
+  maxbch = 2		   # (D=10) number of batches
+ emin(6) = 1.000000000E-01 # (D=1.0) cut-off energy of muon+ (MeV)
+ emin(7) = 1.000000000E-01 # (D=1.0) cut-off energy of muon- (MeV)
+    negs = 1		   # (D=0) =1 EGS photon and electron
+  ipnint = 1		   # (D=0) 0: no, 1: consider photo-nuclear reaction
+  maxbnk = 100000
+
+ 
+[ S o u r c e ]
+  totfact = -pi*c1**2 # (D=1.0) global factor
+ <source> = 1.0
+   s-type = 9           # mono-energetic axial source
+     proj = muon+       # kind of incident nucleus
+       r1 = c1          # radius of sphere [cm]
+       r2 = c1          # radius of source circle [cm]
+      dir = iso         # inner direction with uniform dis. by analog
+      ag1 = -1.0000     # minimum cutoff cosine
+      ag2 = 0.0000      # maximum cutoff cosine
+   e-type = 26          # Cosmic-ray source
+      eg1 = 10.000      # minimum cutoff energy [MeV]
+      eg2 = 1.00000E+05 # maximum cutoff energy [MeV]
+    icenv = 1           # 0>: Terrestiral GCR, D=0: Free-space GCR, <0:Free-space SEP
+    rigid = 0.0000      # Cut-off rigidity in GV
+     alti = 0.0000      # Altitude in km
+   icyear = 2020
+  icmonth = 1
+    icday = 5
+
+ <source> = 1.0
+   s-type = 9           # mono-energetic axial source
+     proj = muon-       # kind of incident nucleus
+       r1 = c1          # radius of sphere [cm]
+       r2 = c1          # radius of source circle [cm]
+      dir = iso         # inner direction with uniform dis. by analog
+      ag1 = -1.0000     # minimum cutoff cosine
+      ag2 = 0.0000      # maximum cutoff cosine
+   e-type = 26          # Cosmic-ray source
+      eg1 = 10.000      # minimum cutoff energy [MeV]
+      eg2 = 1.00000E+05 # maximum cutoff energy [MeV]
+    icenv = 1           # 0>: Terrestiral GCR, D=0: Free-space GCR, <0:Free-space SEP
+    rigid = 0.0000      # Cut-off rigidity in GV
+     alti = 0.0000      # Altitude in km
+   icyear = 2020
+  icmonth = 1
+    icday = 5
+
+
+[ M a t e r i a l ]
+MAT[ 1 ]  $ Soil (SiO2)
+           Si 1.0  O  2.0
+
+MAT[ 2 ]  $ Air
+           N  0.8  O  0.2
+
+[ C e l l ]
+ 1  2  -1.2e-3 -99 1 2 $	air
+ 2  1  -2.0    -2  3   $		 object
+ 3  2  -1.2e-3 -3      $ air	 inside object
+ 98 -1 -99   -1	       $ underground (outer void)
+ 99 -1 99
+
+[ S u r f a c e ]
+ 1  pz     0
+ 2  trc    0  0  0  0  0  50e2  50e2  5e2 $ soil
+ 3  sz     15e2   5e2                     $ air inside object
+99  so  100e2
+
+[ T - T r a c k ]
+   title = 2Dview
+    mesh = xyz       # mesh type is xyz scoring mesh
+  x-type = 2         # x-mesh is linear given by xmin, xmax and nx
+    xmin = -c1       # minimum value of x-mesh points
+    xmax = c1        # maximum value of x-mesh points
+      nx = 100       # number of x-mesh points
+  y-type = 2         # y-mesh is linear given by ymin, ymax and ny
+    ymin = -c1       # minimum value of y-mesh points
+    ymax = c1        # maximum value of y-mesh points
+      ny = 1         # number of y-mesh points
+  z-type = 2         # z-mesh is linear given by zmin, zmax and nz
+    zmin = 0         # minimum value of z-mesh points
+    zmax = c1        # maximum value of z-mesh points
+      nz = 200       # number of z-mesh points
+ 2D-type = 3         # 1:Cont, 2:Clust, 3:Color, 4:xyz, 5:mat, 6:Clust+Cont, 7:Col+Cont
+    axis = xz        # axis of output
+    file = track.out # file name of output for the above axis
+
+   part = (muon+ muon-) proton neutron
+ e-type = 1 # e-mesh is given by the below data
+     ne = 1 # number of e-mesh points
+             0.0  1e10
+   unit = 1            # unit is [1/cm^2/source]
+ epsout = 1            # (D=0) generate eps file by ANGEL
+  gshow = 3            # 0: no 1:bnd, 2:bnd+mat, 3:bnd+reg 4:bnd+lat
+
+[ T-Product ]
+  title = [t-product] in reg mesh
+   mesh = reg            # mesh type is region-wise
+    reg = (1 2 3)
+ e-type = 3            # e-mesh is log given by emin, emax and ne
+   emin = 1.0000000E-03  # minimum value of e-mesh points
+   emax = 1000.0000      # maximum value of e-mesh points
+     ne = 120           # number of e-mesh points
+   part = neutron photon
+   axis = eng             # axis of output
+   unit = 1
+   file = product.out
+ epsout = 1
+
+[END]

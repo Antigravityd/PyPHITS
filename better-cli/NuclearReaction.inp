@@ -1,0 +1,218 @@
+[ T i t l e ]  
+Sample input for calculating double differential cross section
+
+[ P a r a m e t e r s ]
+ icntl    =           0     # (D=0) 3:ECH 5:NOR 6:SRC 7,8:GSH 11:DSH 12:DUMP
+ itall    =           1     # (D=0) 0:no tally at batch, 1:same, 2:different
+ maxcas   =      100000     # (D=10) number of particles per one batch
+ maxbch   =           2     # (D=10) number of batches
+ inclg    =           1     # (D=1) 0:no, 1:INCL for p,n,pi,d,t,3He,alpha, 2:p,n,pi only
+ icrhi    =           1     # (D=1) 0: Shen, 1: NASA, 2: KUROTAMA
+ icxsni   =           0     # (D=0) 0: Pearlstein-Niita, 1: KUROTAMA, 2: Sato
+ ismm     =           1     # (D=0) 0: no, 1: Activate statistical multi-fragmentation
+ ipnint   =           1     # (D=0) photonuclear GDR, 1:analog, -1:implicit
+ imuint   =           1     # (D=0) 0: no, 1: muon interaction
+ e-mode   =           2     # (D=0) 0: Normal, 1: Event generator mode
+ negs     =           1     # (D=-1) =-1:original, =0:No, =1:EGS
+
+[ S o u r c e ] 
+  totfact =   1.0000        # (D=1.0) global factor
+   s-type =   1             # mono-energetic axial source
+     proj =  proton         # kind of incident particle         
+       e0 =   100.00        # energy of beam [MeV/u]
+       r0 =  0.25000        # radius [cm]
+       x0 =   0.0000        # (D=0.0) center position of x-axis [cm]
+       y0 =   0.0000        # (D=0.0) center position of y-axis [cm]
+       z0 =  -40.000        # minimum position of z-axis [cm]
+       z1 =  -40.000        # maximum position of z-axis [cm]
+      dir =   1.0000        # z-direction of beam [cosine]
+
+[ M a t e r i a l ]
+$   Copper
+m1     Cu  1.0
+
+[ C e l l ]
+    1     1 -8.96                 -120 121 -119   $ Target
+    2     0                          -101 102 117 -118 
+    3     0                          -103 104 117 -118 
+    4     0                          -105 106 117 -118 
+    5     0                          -107 108 117 -118 
+    6     0                          -109 110 117 -118 
+    7     0                          -111 112 117 -118 
+    8     0                          -113 114 117 -118 
+    9     0                          -115 116 117 -118 
+
+   10     0                          -117 (120:-121:119) 
+   11     0                          117 -118 
+                                     (101:-102:-117:118) 
+                                     (103:-104:-117:118) 
+                                     (105:-106:-117:118) 
+                                     (107:-108:-117:118)  
+                                     (109:-110:-117:118) 
+                                     (111:-112:-117:118)  
+                                     (113:-114:-117:118) 
+                                     (115:-116:-117:118) 
+
+   12    -1                 118 
+
+set: c10[5.0]     $ width of angle
+set: c20[100.0]   $ radius of sphere
+set: c30[0.1]     $ depth of sample
+set: c40[2.0]     $ radius of sample
+set: c50[8.96/63.55*6.02e23*c30] $ target density particles/cm^2
+
+set: c1[15.0]      $ 1st angel
+set: c2[30.0]     $ 2nd angel
+set: c3[45.0]     $ 3th angel
+set: c4[60.0]     $ 4th angel
+set: c5[75.0]     $ 5th angel
+set: c6[90.0]     $ 6th angel
+set: c7[120.0]     $ 7th angel
+set: c8[140.0]     $ 8th angel
+
+set: c11[c10/2]
+
+set: c21[c1+c11]
+set: c22[c2+c11]
+set: c23[c3+c11]
+set: c24[c4+c11]
+set: c25[c5+c11]
+set: c26[c6+c11]
+set: c27[c7+c11]
+set: c28[c8+c11]
+
+set: c31[c1-c11]
+set: c32[c2-c11]
+set: c33[c3-c11]
+set: c34[c4-c11]
+set: c35[c5-c11]
+set: c36[c6-c11]
+set: c37[c7-c11]
+set: c38[c8-c11]
+
+set: c41[c20*cos(c31*pi/180.)]
+set: c42[c20*cos(c32*pi/180.)]
+set: c43[c20*cos(c33*pi/180.)]
+set: c44[c20*cos(c34*pi/180.)]
+set: c45[c20*cos(c35*pi/180.)]
+set: c46[c20*cos(c36*pi/180.)]
+set: c47[c20*cos(c37*pi/180.)]
+set: c48[c20*cos(c38*pi/180.)]
+
+set: c51[c20*cos(c21*pi/180.)]
+set: c52[c20*cos(c22*pi/180.)]
+set: c53[c20*cos(c23*pi/180.)]
+set: c54[c20*cos(c24*pi/180.)]
+set: c55[c20*cos(c25*pi/180.)]
+set: c56[c20*cos(c26*pi/180.)]
+set: c57[c20*cos(c27*pi/180.)]
+set: c58[c20*cos(c28*pi/180.)]
+
+set: c61[2*pi*c20*(c41-c51)]
+set: c62[2*pi*c20*(c42-c52)]
+set: c63[2*pi*c20*(c43-c53)]
+set: c64[2*pi*c20*(c44-c54)]
+set: c65[2*pi*c20*(c45-c55)]
+set: c66[2*pi*c20*(c46-c56)]
+set: c67[2*pi*c20*(c47-c57)]
+set: c68[2*pi*c20*(c48-c58)]
+
+[ S u r f a c e ]
+  101       pz     c41
+  102       pz     c51
+  103       pz     c42
+  104       pz     c52
+  105       pz     c43
+  106       pz     c53
+  107       pz     c44
+  108       pz     c54
+  109       pz     c45
+  110       pz     c55
+  111       pz     c46
+  112       pz     c56
+  113       pz     c47
+  114       pz     c57
+  115       pz     c48
+  116       pz     c58
+
+  117       so     c20
+  118       so     c20+1.0  
+
+  119       cz     c40
+  120       pz     c30/2
+  121       pz     -c30/2
+
+[T-Cross]
+    title = [t-cross] in region mesh
+     mesh =  reg            # mesh type is region-wise
+      reg =    8            # number of crossing regions
+      non     r-from r-to    area
+        1     10     2       c61
+        2     10     3       c62
+        3     10     4       c63
+        4     10     5       c64
+        5     10     6       c65
+        6     10     7       c66
+        7     10     8       c67
+        8     10     9       c68
+   e-type =    3            # e-mesh is log given by emin, emax and ne
+     emin =   1.000000      # minimum value of e-mesh points
+     emax =   100.0000      # maximum value of e-mesh points
+       ne =   50            # number of e-mesh points
+     unit =    2            # unit is [1/cm^2/MeV/source]
+     axis =  eng            # axis of output
+     file = ddx_cross.out   # file name of output for the above axis
+   output = flux            # surface crossing flux
+     part =  neutron  
+   epsout =    1            # (D=0) generate eps file by ANGEL
+   factor = c20*c20/c50*1.0E27
+    y-txt = d^2\sigma/dE/d\Omega (mb/sr/MeV)
+
+[T-Product] 
+     mesh =  reg
+      reg =    1
+   e-type =    3            # e-mesh is log given by emin, emax and ne
+     emin =   1.000000      # minimum value of e-mesh points
+     emax =   100.0000      # maximum value of e-mesh points
+       ne =   50            # number of e-mesh points
+  a-type = -1
+      na = 15  
+      12.5 17.5 27.5 32.5 42.5 47.5 57.5 62.5 72.5 77.5 87.5 92.5 117.5 122.5 137.5 142.5
+     unit = 23
+     axis =  eng
+     file = ddx_product.out
+   output = nuclear
+   epsout = 1
+    part  = neutron 
+    factor = 1/c50*1.0E27
+    y-txt = d^2\sigma/dE/d\Omega (mb/sr/MeV)
+
+[T-Track] 
+    title = [t-track] in xyz mesh
+     mesh =  xyz            # mesh type is xyz scoring mesh
+   x-type =    2            # x-mesh is linear given by xmin, xmax and nx
+     xmin =  -60.00000      # minimum value of x-mesh points
+     xmax =   60.00000      # maximum value of x-mesh points
+       nx =  100            # number of x-mesh points
+   y-type =    1            # y-mesh is given by the below data
+       ny =    1            # number of y-mesh points
+           -1.00000E+01  1.00000E+01
+   z-type =    2            # z-mesh is linear given by zmin, zmax and nz
+     zmin =  -60.00000      # minimum value of z-mesh points
+     zmax =   60.00000      # maximum value of z-mesh points
+       nz =  100            # number of z-mesh points
+   e-type =    2            # e-mesh is linear given by emin, emax and ne
+     emin =   0.000000      # minimum value of e-mesh points
+     emax =   10000.00      # maximum value of e-mesh points
+       ne =    1            # number of e-mesh points
+     unit =    1            # unit is [1/cm^2/source]
+ material =  all            # (D=all) number of specific material
+  2D-type =    3            # 1:Cont, 2:Clust, 3:Color, 4:xyz, 5:mat, 6:Clust+Cont, 7:Col+Cont
+     axis =   xz            # axis of output
+     file = xz_flux.out     # file name of output for the above axis
+     part =  neutron  
+   epsout =    1            # (D=0) generate eps file by ANGEL
+
+[END]
+
+ 
