@@ -21,8 +21,9 @@ for i in range(1,11):
     new = Cell([Sphere(i+1), Sphere(i, inside=False)], mats[i], -1)
     cells.append(new)
 
-ocean = Void([Sphere(11, inside=False)],                             # Assign objects associated with a cell /to/ the cell
-             tally=Deposition(Mesh("energy",  [float(i) for i in np.arange(0, 10, 0.25)]), "deposit", "1/source", "reg"))
+ocean = Void([Sphere(11, inside=False)])
+
+escape_e = DumpFluence(cells[-1], ocean, 4*pi/3, [1, 8], "flux")
 
 
 cells.append(ocean)
@@ -33,7 +34,6 @@ source = Cylindrical("241Am", 2.2, fissile="neutrons", bounds=(-0.25,0.25), r_ou
 # Capture input for further analysis in Python as your choice of many common data formats,
 # or render and return the .eps
 # Pass raw input data in case of an error or unimplemented feature
-inp = make_input(cells, source, [], raw="$ This could be e.g. an [Elastic Option] section text.\n",
+inp = make_input(cells, source, escape_e, raw="$ This could be e.g. an [Elastic Option] section text.\n",
                  parameters={"negs": 1, "e-mode": 2})
 print(inp)
-run_phits(cells, source, [], parameters={"negs": 1, "e-mode": 2})

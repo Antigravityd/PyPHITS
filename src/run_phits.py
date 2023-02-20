@@ -3,7 +3,6 @@ import subprocess as sp
 import os
 import sys
 import shutil as sh
-import networkx as nx
 import itertools as it
 import collections as col
 import re
@@ -19,7 +18,7 @@ from source import *
 from surface import *
 from tally import *
 from transform import *
-from tco import *
+
 
 
 # This is complicated enough to sketch the algorithm before writing code (shocker!)
@@ -84,7 +83,7 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
 
 
-    breakpoint()
+
     # We now have that if any two PHITS objects A and B have a property C and D (respectively) such that C == D, C /is/ D.
 
 
@@ -176,26 +175,30 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
         if obj_type in type_divided:
             if type_divided[obj_type]:
                 objs = type_divided[obj_type]
-                if hasattr(objs[0], "group_by"):
-                    grouped = it.groupby(objs, objs[0].group_by)
-                    assert len(grouped) <= objs[0].max_groups, ValueError(f"Too many {obj_type} groups.")
-                    for group in grouped:
-                        rep = group[0]
-                        inp += rep.separator(rep)
-                        if hasattr(rep, "prelude_shape"):
-                            inp += rep.prelude()
+                type_rep = objs[0]
+                if hasattr(type_rep, "group_by"):
+                    grouped = it.groupby(sorted(objs, key=lambda x: x.group_by()), lambda x: x.group_by())
+                    if hasattr(type_rep, "max_groups"):
+                        assert len(list(grouped)) <= type_rep.max_groups, ValueError(f"Too many {obj_type} groups.")
+                    for key, group in grouped:
+                        group = list(group)
+                        inp += group[0].separator()
+                        gs = len(group)
+                        for obj in group:
+                            setattr(obj, "group_size", gs)
+                        if hasattr(group[0], "prelude"):
+                            inp += group[0].prelude_str()
                         for obj in group:
                             inp += obj.definition()
                 else:
-                    inp += objs[0].section_title()
-                    if hasattr(objs[0], "prelude_shape"):
-                        inp += objs[0].prelude()
+                    inp += type_rep.section_title()
+                    if hasattr(type_rep, "prelude"):
+                        inp += type_rep.prelude_str()
                     for obj in objs:
                         inp += obj.definition()
 
 
 
-    breakpoint()
     inp += "[Title]\n"
     inp += title + '\n'
 
@@ -280,11 +283,10 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
     add_defs("timer")
 
-    add_defs("t-track")
     add_defs("t-cross")
-    add_defs("t-point")
-    add_defs("t-deposit")
-    # ...
+    add_defs("t-product")
+    add_defs("t-time")
+    # ... more tallies, eventually?
 
     inp += raw
 
@@ -293,54 +295,6 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
 
 
-def capture_result(return_type): # -> pandas.DataFrame | numpy.array | dict
-    files = []
-    for name in os.listdir():
-        if re.search("\.out$", name) is not None:
-            files.append(name)
-
-
-    breakpoint()
-    output = []
-    for fil in files:
-        with open(fil, "r") as f:
-            schema = []
-            data = dict()
-            in_data = False
-            for line in f:
-                if line[0] == "#":
-                    continue
-                if in_data:
-                    if line in ['\n', '\r\n']:
-                        in_data = False
-                    else:
-                        for idx, datum in enumerate(line.split()):
-                            data[idx].append(float(datum))
-                else:
-                    if re.search("^H.?:", line, flags=re.IGNORECASE) is not None:
-                        in_data = True
-                        line = re.sub("^H.?:", "", line, flags=re.IGNORECASE)
-                        sep  = line.split()
-                        for idx, col in enumerate(sep):
-                            schema.append(col)
-                            data[idx] = []
-
-            breakpoint()
-            for idx, colname in enumerate(schema):
-                data[colname] = data[idx]
-                del data[idx]
-
-            if return_type == "dict":
-                output.append(data)
-            elif return_type == "pandas":
-                output.append(pd.DataFrame(data))
-            elif return_type == "numpy":
-                array = []
-                for col, lst in data.items():
-                    array.append(lst)
-                output.append(np.array(array))
-
-    return output
 
 
 
@@ -372,7 +326,6 @@ def run_phits(sources, cells, tallies, command="phits", throws=False, filename="
         result = capture_result(return_type)
 
         return result
-
 
 
 

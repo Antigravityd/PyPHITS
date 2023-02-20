@@ -98,7 +98,7 @@ class PhitsObject:
     nones = dict()
     index = None
     no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
-               "group_by", "separator", "prelude", "max_groups"}
+               "group_by", "separator", "prelude", "max_groups", "group_size"}
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
              "neutron_magnetic_field", "mapped_magnetic_field", "uniform_electromagnetic_field", "mapped_electromagnetic_field",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
@@ -178,7 +178,7 @@ class PhitsObject:
         for attr in how:
             if isinstance(attr, str) and attr[0] == "\\": # wat the fug
                 to += attr[1:]
-
+                return to
             assign = ""
             endstr = "\n" if assignments else " "
             spacing = " "
@@ -220,7 +220,7 @@ class PhitsObject:
                     to += endstr
         return to
 
-    def prelude(self):
+    def prelude_str(self):
         inp = self.add_definition(self.prelude, "")
 
         return continue_lines(inp)
