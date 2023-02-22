@@ -34,6 +34,6 @@ source = Cylindrical("241Am", 2.2, fissile="neutrons", bounds=(-0.25,0.25), r_ou
 # Capture input for further analysis in Python as your choice of many common data formats,
 # or render and return the .eps
 # Pass raw input data in case of an error or unimplemented feature
-inp = make_input(cells, source, escape_e, raw="$ This could be e.g. an [Elastic Option] section text.\n",
-                 parameters={"negs": 1, "e-mode": 2})
+inp = run_phits(cells, source, escape_e, raw="$ This could be e.g. an [Elastic Option] section text.\n",
+                parameters={"negs": 1, "e-mode": 2})
 print(inp)

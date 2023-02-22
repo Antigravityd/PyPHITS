@@ -308,22 +308,35 @@ class TempWorkingDir(): # this is probably all kinds of racy and unsafe, but eh
         os.chdir("..")
         sh.rmtree(self.name)
 
-def run_phits(sources, cells, tallies, command="phits", throws=False, filename="phits", return_type="dict", **kwargs):
+def run_phits(sources, cells, tallies, command="phits", error_stop=True, filename="phits.inp", return_type="dict", **kwargs):
     # TODO: consider how to read stdout/output files into returnable formats
     # WARNING: setting the command variable opens up shell injection attacks, as sp.run() with
     # shell=True is done unfiltered. Should see about using shlex.quote() to sanitize, since title may be specified by the user
 
     with TempWorkingDir("temp_PHITS") as newdir:
         inp = make_input(sources, cells, tallies, **kwargs)
-        print(inp)
-        with open(f"{filename}.inp", "w") as inp_file:
+        with open(f"{filename}", "w") as inp_file:
             inp_file.write(inp)
 
-        output = sp.run(f"phits '{filename}.inp'", shell=True, capture_output=True, text=True, check=throws)
-        print(output)
+        output = ""
+        try:
+            sp.run(f"phits '{filename}'", shell=True, capture_output=True, text=True, check=True)
+
+        except sp.CalledProcessError as error:
+            r = f"PHITS exited with code {error.returncode}.\n"
+            r += f"output: {error.output}\n"
+            r += f"stdout: {error.stdout}\n"
+            r += f"stderr: {error.stderr}\n"
+            r += "Offending input file:\n"
+            r += inp
+            if error_stop:
+                raise RuntimeError(r)
+            else:
+                print(r)
 
 
-        result = capture_result(return_type)
+        # for t in tallies:
+        #     if
 
         return result
 

@@ -5,6 +5,9 @@
 from base import *
 
 class Source(PhitsObject): # currently no support for cnt(i) or ibatch common parameters
+    parser = r"""
+    sources:
+"""
     def __init__(self, s_type, projectile, *, spin=(0, 0, 0), mask=(None, 1000),
                  transform=None, weight=1.0, factor=1.0, charge_override=None, fissile=False, **kwargs):
         super().__init__("source", **kwargs)

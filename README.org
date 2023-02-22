@@ -14,18 +14,18 @@ Specifying the input via an object system in a general-purpose programming langu
 
 #+begin_src python
 
-  # Construct sections via list comprehensions
+   # Construct objects via list comprehensions
   mats = [Material([("C", i/100), ("H", (2/3)*(100-i)/100), ("O", (1/3)*(100-i)/100)]) for i in range(55,100)]
 
   # Or loops
-  cells = [Cell([(Sphere(1), "<")], mats[0], -1)]
+  cells = [Cell([Sphere(1)], mats[0], -1)]
   for i in range(1,11):
-      new = Cell([(Sphere(i+1), "<") , (Sphere(i), ">")], mats[i], -1)
+      new = Cell([Sphere(i+1), Sphere(i, inside=False)], mats[i], -1)
       cells.append(new)
 
-  # Tallies and other objects that are associated to a particular object can be attributes of that object
-  ocean = Void([(Sphere(11), ">")],
-               tally=Deposition(Mesh("energy",  [float(i) for i in np.arange(0, 10, 0.25)]), "deposit", "1/source", "reg"))
+  ocean = Void([Sphere(11, inside=False)])
+
+  escape_e = DumpFluence(cells[-1], ocean, 4*pi/3, [1, 8], "flux")
 
 
   cells.append(ocean)
@@ -36,11 +36,9 @@ Specifying the input via an object system in a general-purpose programming langu
   # Capture input for further analysis in Python as your choice of many common data formats,
   # or render and return the .eps
   # Pass raw input data in case of an error or unimplemented feature
-  inp = make_input(cells, source, [], raw="$ This could be e.g. an [Elastic Option] section text.\n",
+  inp = make_input(cells, source, escape_e, raw="$ This could be e.g. an [Elastic Option] section text.\n",
                    parameters={"negs": 1, "e-mode": 2})
-
-  run_phits(cells, source, [], parameters={"negs": 1, "e-mode": 2})
-
+  print(inp)
 #+end_src
 
 * Result
@@ -48,95 +46,120 @@ Specifying the input via an object system in a general-purpose programming langu
 The example produces the following result:
 
 #+begin_src phits
-
   [Title]
-  2022-06-29 09:09:18.917314
+   2023-02-19 20:	09: 47.397746
   [Parameters]
-  negs = 1
-  e-mode = 2
+     negs = 1
+   e-mode = 2
   [Source]
-  s-type = 1
-  proj = 241Am
-  ispfs = 2
-  z0 = -0.25
-  z1 = 0.25
-  r0 = 0.3
-  e0 = 2.2
+   s-type = 1
+     proj = 241Am
+    ispfs = 2
+       z0 = -0.25
+       z1 = 0.25
+       r0 = 0.3
+       e0 = 2.2
   [Material]
   MAT[1]
-  C 0.55 H 0.3 O 0.15
+   C 0.6 H 0.26666666666666666 O 0.13333333333333333
 
   MAT[2]
-  C 0.56 H 0.29333333333333333 O 0.14666666666666667
+   C 0.63 H 0.24666666666666665 O 0.12333333333333332
 
   MAT[3]
-  C 0.57 H 0.2866666666666666 O 0.1433333333333333
+   C 0.65 H 0.2333333333333333 O 0.11666666666666665
 
   MAT[4]
-  C 0.58 H 0.28 O 0.14
+   C 0.55 H 0.3 O 0.15
 
   MAT[5]
-  C 0.59 H 0.2733333333333333 O 0.13666666666666666
+   C 0.58 H 0.28 O 0.14
 
   MAT[6]
-  C 0.6 H 0.26666666666666666 O 0.13333333333333333
+   C 0.61 H 0.26 O 0.13
 
   MAT[7]
-  C 0.61 H 0.26 O 0.13
+   C 0.56 H 0.29333333333333333 O 0.14666666666666667
 
   MAT[8]
-  C 0.62 H 0.2533333333333333 O 0.12666666666666665
+   C 0.57 H 0.2866666666666666 O 0.1433333333333333
 
   MAT[9]
-  C 0.63 H 0.24666666666666665 O 0.12333333333333332
+   C 0.64 H 0.24 O 0.12
 
   MAT[10]
-  C 0.64 H 0.24 O 0.12
+   C 0.59 H 0.2733333333333333 O 0.13666666666666666
 
   MAT[11]
-  C 0.65 H 0.2333333333333333 O 0.11666666666666665
+   C 0.62 H 0.2533333333333333 O 0.12666666666666665
 
   [Surface]
-  1 SO 1
-  2 SO 2
-  3 SO 3
-  4 SO 4
-  5 SO 5
-  6 SO 6
-  7 SO 7
-  8 SO 8
-  9 SO 9
-  10 SO 10
-  11 SO 11
+   1  SO 7
+   2  SO 10
+   3  SO 8
+   4  SO 4
+   5  SO 1
+   6  SO 6
+   7  SO 2
+   8  SO 11
+   9  SO 3
+   10 SO 9
+   11 SO 5
   [Cell]
-  1 1 -1  1
-  2 2 -1  2 -1
-  3 3 -1  3 -2
-  4 4 -1  4 -3
-  5 5 -1  5 -4
-  6 6 -1  6 -5
-  7 7 -1  7 -6
-  8 8 -1  8 -7
-  9 9 -1  9 -8
-  10 10 -1  10 -9
-  11 11 -1  11 -10
-  12 -1  -11
-  [T-Deposit]
-  mesh = reg
-  reg = 12
-  e-type = 1
-  ne = 39
-  0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 2.5 2.75 3.0 3.25 3.5 3.75 4.0 4.25 4.5 4.75 5.0 5.25 5.5 5.75 6.0 6.25 6.5 6.75 7.0 7.25 7.5 7.75 8.0 8.25 8.5 8.75 9.0 9.25 9.5 9.75
+   1 7 -1 7 5
 
 
-  output = deposit
-  axis = reg
+   2 3 -1 8 2
 
-  file = deposit.out
-  unit = 3
 
-  $ This could be e.g. an [Elastic Option] section text.
+   3 1 -1 6 11
 
+
+   4 8 -1 9 7
+
+
+   5 2 -1 10 3
+
+
+   6 -1 8
+
+
+   7 9 -1 2 10
+
+
+   8 11 -1 3 1
+
+
+   9 10 -1 11 4
+
+
+   10 6 -1 1 6
+
+
+   11 4 -1 5
+
+
+   12 5 -1 4 9
+
+
+  [T-Cross]
+   mesh = reg
+   unit = 1
+   axis = reg
+   file = cross.dmp
+  output_type = flux
+    reg = 1
+   mesh = reg
+   unit = 1
+   axis = reg
+   file = cross.dmp
+  output_type = flux
+    reg = 1
+   r-out r-in area
+   2     6    4.1887902047863905
+   dump = -2
+   1 8
+   $ This could be e.g. an [Elastic Option] section text.
 #+end_src
 
 * Code
@@ -167,8 +190,7 @@ This allows simple definitions of consequential objects, as follows:
 
 The =name= attribute indicates which section the object belongs to, =required= indicates the arguments to the initialization that are required, =positional= indicates those arguments which must be specified positionally, =optional= indicates those additional arguments which are optional and must be specified by keyword, =shape= indicates how the attributes are put into the input file, =subobjects= indicates those arguments which, if given, will be another =PhitsObject=, =ident_map= associates some of the object's attribute names with an alternative name so that =<alternative name> = <value>=  instead of =<attribute name> = <value>= is placed in the input, =value_map= does the same but for the =<value>= part of the equality, and =nones= maps attribute names to the value to place in the file when they're omitted instead of omitting them from the file altogether (e.g. the =non= skip operator).
 
-The shape attribute is a tuple of strings, functions, and more tuples. If an element is a string, it's placed verbatim into the file if it's not an attribute name of the object, and
-otherwise =<attribute name> = <attribute value>\n= is placed in the file. If it's a function, that function is called with the object in question as a sole argument and the result of the function is placed into the file verbatim with a trailing newline. If it's a tuple, the same rules apply, but the =<attribute name> == part is omitted and a trailing space instead of a trailing newline is added (for the function objects too). If any string ends with a backslash, the trailing newline is instead a space. Additionally, the two spaces on either side of the equals sign are removed, if an equals sign were otherwise to appear in the input file.
+The shape attribute is a tuple of strings, functions, and more tuples. If an element is a string, it's placed verbatim into the file if it's not an attribute name of the object (with a preceding backslash escaping this behavior, in the case of a collision), and otherwise =<attribute name> = <attribute value>\n= is placed in the file. If it's a function, that function is called with the object in question as a sole argument and the result of the function is placed into the file verbatim with a trailing newline. If it's a tuple, the same rules apply, but the =<attribute name> == part is omitted and a trailing space instead of a trailing newline is added (for the function objects too). If any string ends with a backslash, the trailing newline is instead a space. Additionally, the two spaces on either side of the equals sign are removed, if an equals sign were otherwise to appear in the input file.
 
 * More Code
 
@@ -182,9 +204,9 @@ It's then a simple matter of constructing the string representing the input file
 
 * TODOs
 
-The central unimplemented functionality is the output parsing. I have half a parser for AnGeL input files written; that'll do it once it's done.
+I originally intended to fully support all of the tallies available in PHITS. However, this would require developing a full-featured parser for the AnGeL files so-generated, as in order to support the Python integration, the contained data would need to be extracted. However, this proved to be rather involved; the decaying remains of this parser are still in the =angel= subdirectory, should it ever be useful in the future. Instead of doing this, I moved to allowing only the three tallies for which one can specify the =dump= option, as this produces a sensible, easily machine-readable file containing exactly the desired data. Many of the other tallies should be emulatable in post from these tallies alone.
 
-The core object model currently doesn't support a few edge cases: the multiplier section, energy-distributed sources, and all but the first 5 tallies.
+The core object model currently doesn't support a few edge cases: the multiplier section, energy-distributed sources, etc.
 
 It would be nice if the Fortran-Python interop would make it possible to write the user-defined sources, cross-sections, functions, and tallies in Python. Similarly, defining the (electro)magnetic field files and other external files via Python would be feasible.
 

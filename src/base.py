@@ -87,7 +87,12 @@ class PhitsObject:
     Trailing backslashes in a string disable the insertion of the separating whitespace,
     and a string entry with only a backslash removes the separating whitespace of the previous entry (in case it's callable).
 
-    There's also a series of parameters related to grouping, that allow
+    There's also a series of parameters related to grouping, that allow TODO: finish
+
+    There's a "parser" and "validator" parameters, the first of which is a string representing part of a Lark parser
+    used to extract the object from a string representing part of an .inp (it's not complete---for brevity,
+    a set of common parse rules are retained by the this base class, and the parser string is appended to that)
+    and the latter of which is a function which inspects the resulting tree and decides if it's legal PHITS input.
     """
     required = []
     positional = []
@@ -98,7 +103,7 @@ class PhitsObject:
     nones = dict()
     index = None
     no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
-               "group_by", "separator", "prelude", "max_groups", "group_size"}
+               "group_by", "separator", "prelude", "max_groups", "group_size", "parser", "validator"}
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
              "neutron_magnetic_field", "mapped_magnetic_field", "uniform_electromagnetic_field", "mapped_electromagnetic_field",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
@@ -260,6 +265,13 @@ class Parameters(PhitsObject):
     dbcutoff = 3.3
 
     """
+    parser = r"""
+    %import common.WS
+    %ignore WS
+
+    parameters: assignment*
+    assignment: iden = vals
+    """
     def __init__(self, **kwargs):
         self.name = "parameters"
         for k,v in kwargs.items():
@@ -276,6 +288,7 @@ class Parameters(PhitsObject):
 
         return inp
 
+# I want to get rid of this
 class Mesh():
     """Represents all list-typed data in PHITS."""
     def __init__(self, axis, bins=None): # All bin generation is easily done in Python via list comprehensions
