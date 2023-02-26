@@ -1,4 +1,5 @@
 from lark import Lark
+from re import IGNORECASE
 
 test = r"""[Title]
 2023-02-22 09:26:52.596846
@@ -235,41 +236,20 @@ vals: computation | FILENAME
 regiongrp: POSINT | /( */ (POSINT " "*) / *)/ | /\{ */ POSINT
 latuniv: // TODO; lattice universe specification like ( 6 < 10[1 0 0] < u=3 )
 
-etype: e1 | e2 | e3 | e4 | e5 | e6 | e7 | e20 | e25 | e28
 
-e1: " "* "e-type"i " "* "=" " "* /1|8|11|18|21|22|31|32/ " "* "\n" assignment grid
+    etype: e1 | e2 | e3 | e4 | e5 | e6 | e7 | e20 | e25 | e28
 
-e4: " "* "e-type"i " "* "=" " "* /4|9|14|19|23|24|33|34/  " "* "\n" assignment grid assignment grid
+    e1: " "* "e-type"i " "* "=" " "* /1|8|11|18|21|22|31|32/ " "* "\n" assignment grid
+    e4: " "* "e-type"i " "* "=" " "* /4|9|14|19|23|24|33|34/  " "* "\n" assignment grid assignment grid
+    e2: " "* "e-type"i " "* "=" " "* /2|12/  " "* "\n" assignment ~ 4
+    e3: " "* "e-type"i " "* "=" " "* /3/  " "* "\n" assignment ~
+    e5: " "* "e-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
+    e6: " "* "e-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 5 grid
+    e7: " "* "e-type"i " "* "=" " "* /7/  " "* "\n" assignment ~ 6 grid
+    e20: " "* "e-type"i " "* "=" " "* /20/  " "* "\n" assignment
+    e25: " "* "e-type"i " "* "=" " "* /25|26/  " "* "\n" assignment ~ 14
+    e28: " "* "e-type"i " "* "=" " "* /28|29/  " "* "\n" assignment ~ 7
 
-e2: " "* "e-type"i " "* "=" " "* /2|12/  " "* "\n" assignment ~ 4
-
-e3: " "* "e-type"i " "* "=" " "* /3/  " "* "\n" assignment ~ 5
-
-e5: " "* "e-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
-
-
-e6: " "* "e-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 5 grid
-
-e7: " "* "e-type"i " "* "=" " "* /7/  " "* "\n" assignment ~ 6 grid
-
-e20: " "* "e-type"i " "* "=" " "* /20/  " "* "\n" assignment
-
-e25: " "* "e-type"i " "* "=" " "* /25|26/  " "* "\n" assignment ~ 14
-
-e28: " "* "e-type"i " "* "=" " "* /28|29/  " "* "\n" assignment ~ 7
-
-
-
-atype: p1 | p4 | p5 | p6
-
-p1: " "* "a-type"i " "* "=" " "* /1|11/  " "* "\n" assignment grid
-
-
-p4: " "* "a-type"i " "* "=" " "* /4|14/  " "* "\n" assignment grid assignment grid
-
-p5: " "* "a-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
-
-p6: " "* "a-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 3 grid
 
 
 ttype: t0 | t3 | t4 | t5 | t6  | t100
@@ -316,7 +296,7 @@ FILENAME: /[a-z0-9()]+/i // TODO; note that array entries can be invoked inside 
 
 %import common.WS
 %ignore WS
-""")
+""", g_regex_flags=IGNORECASE)
 
 
 print(parser.parse(test))

@@ -43,6 +43,9 @@ class Void(PhitsObject):
                   "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance",
                   "weight_window", "ww_bias", "forced_collisions", "repeated_collisions", "volume",
                   "reg_name", "counter", "timer", "tally"]
+    parser = r"""
+    start =
+"""
 
 
 

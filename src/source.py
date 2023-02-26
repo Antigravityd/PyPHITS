@@ -6,8 +6,47 @@ from base import *
 
 class Source(PhitsObject): # currently no support for cnt(i) or ibatch common parameters
     parser = r"""
-    sources:
-"""
+    start: assignment* (source | ("<source>" "=" computation source)+) assignment*
+
+    source: "s-type" "=" POSINT (assignment | etype | ttype | atype)*
+
+    assignment: IDENTIFIER "=" computation
+
+
+    etype: e1 | e2 | e3 | e4 | e5 | e6 | e7 | e20 | e25 | e28
+
+    e1: " "* "e-type"i " "* "=" " "* /1|8|11|18|21|22|31|32/ " "* "\n" assignment numbergrid
+    e4: " "* "e-type"i " "* "=" " "* /4|9|14|19|23|24|33|34/  " "* "\n" assignment numbergrid assignment numbergrid
+    e2: " "* "e-type"i " "* "=" " "* /2|12/  " "* "\n" assignment ~ 4
+    e3: " "* "e-type"i " "* "=" " "* /3/  " "* "\n" assignment ~
+    e5: " "* "e-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
+    e6: " "* "e-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 5 numbergrid
+    e7: " "* "e-type"i " "* "=" " "* /7/  " "* "\n" assignment ~ 6 numbergrid
+    e20: " "* "e-type"i " "* "=" " "* /20/  " "* "\n" assignment
+    e25: " "* "e-type"i " "* "=" " "* /25|26/  " "* "\n" assignment ~ 14
+    e28: " "* "e-type"i " "* "=" " "* /28|29/  " "* "\n" assignment ~ 7
+
+    atype: p1 | p4 | p5 | p6
+
+    p1: " "* "a-type"i " "* "=" " "* /1|11/  " "* "\n" assignment numbergrid
+    p4: " "* "a-type"i " "* "=" " "* /4|14/  " "* "\n" assignment numbergrid assignment numbergrid
+    p5: " "* "a-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
+    p6: " "* "a-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 3 numbergrid
+
+    ttype: t0 | t3 | t4 | t5 | t6  | t100
+
+    t0: " "* "t-type"i " "* "=" " "* /0|1|2/  " "* "\n" assignment ~ 5
+    t3: " "* "t-type"i " "* "=" " "* /3/  " "* "\n" assignment numbergrid
+    t4: " "* "t-type"i " "* "=" " "* /0|1|2/  " "* "\n" assignment numbergrid assignment numbergrid
+    t5: " "* "t-type"i " "* "=" " "* /5/  " "* "\n" assignment ~ 4
+    t6: " "* "t-type"i " "* "=" " "* /6/  " "* "\n" assignment ~ 5 numbergrid
+    t100: " "* "t-type"i " "* "=" " "* /100/  " "* "\n" assignment ~ 2
+    """
+
+    def start(self, tree):
+
+    def source
+
     def __init__(self, s_type, projectile, *, spin=(0, 0, 0), mask=(None, 1000),
                  transform=None, weight=1.0, factor=1.0, charge_override=None, fissile=False, **kwargs):
         super().__init__("source", **kwargs)
