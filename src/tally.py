@@ -9,7 +9,7 @@ class DumpFluence(PhitsObject):
     required = ["out", "into", "area", "data", "output_type"]
     positional = ["out", "into", "area", "data", "output_type"]
     optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
-    shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"))
+    shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),)
     prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
                lambda self: f"reg = {self.group_size}", lambda self: f"dump = -{len(self.data)}",
                lambda self: " ".join([str(i) for i in self.data]), ("r-out", "r-in", "\\area"))
