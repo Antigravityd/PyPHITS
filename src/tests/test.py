@@ -1,4 +1,4 @@
-parameters = Parameters()
+parameters = Parameters(icntl=7)
 sources = [Cylindrical("neutron", 2.2),
            Rectangular("neutron", 12),
            Gaussian("electron", 11),

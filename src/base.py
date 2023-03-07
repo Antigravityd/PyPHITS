@@ -265,13 +265,6 @@ class Parameters(PhitsObject):
     dbcutoff = 3.3
 
     """
-    parser = r"""
-    %import common.WS
-    %ignore WS
-
-    parameters: assignment*
-    assignment: iden = vals
-    """
     def __init__(self, **kwargs):
         self.name = "parameters"
         for k,v in kwargs.items():

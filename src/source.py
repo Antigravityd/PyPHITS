@@ -4,38 +4,6 @@
 # Currently, no a-type mesh support for the elevation angles.
 from base import *
 
-class Source(PhitsObject): # currently no support for cnt(i) or ibatch common parameters
-    parser = r"""
-    sources:
-"""
-    def __init__(self, s_type, projectile, *, spin=(0, 0, 0), mask=(None, 1000),
-                 transform=None, weight=1.0, factor=1.0, charge_override=None, fissile=False, **kwargs):
-        super().__init__("source", **kwargs)
-        self.s_type = s_type
-        self.proj = projectile
-        self.sx = spin[0]
-        self.sy = spin[1]
-        self.sz = spin[2]
-        self.reg = mask[0]
-        self.ntmax = mask[1]
-        self.trcl = transform
-        self.wgt = weight
-        self.factor = factor
-        self.izst = charge_override
-        self.ispfs = 0 if not fissile else (2 if fissile == "neutrons" else 1)
-
-    def definition(self):
-        inp = ""
-        for var, val in [(k, v) for k, v in self.__dict__.items() if k not in {"index", "name", "parameters"}]:
-            if val is not None:
-                if isinstance(val, PhitsObject):
-                    inp += f"{var} = {val.index}\n"
-                else:
-                    var2 = var.replace("_", "-")
-                    inp += f"{var2} = {val}\n"
-
-        return inp
-
         
 
 class Cylindrical(PhitsObject):
