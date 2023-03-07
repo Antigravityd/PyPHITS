@@ -1,8 +1,10 @@
 from collections import namedtuple, Iterable
-from re import IGNORECASE
+import regex as re
+import dataclasses
 from lark import Lark, Transformer, Tree, Token
 from lark.reconstruct import Reconstructor
 from math import exp, log, log10, sqrt, acos, asin, atan, atan2, cos, cosh, sin, sinh, tan, tanh, pi
+from valspec import *
 def continue_lines(inp):        # Continue lines that are too long
     r = ""
     length = 0
@@ -96,22 +98,16 @@ class PhitsObject(Transformer):
     max_groups indicates the limit on the number of groups (if one is set, say, by PHITS), and if group_size is set at construction,
     it will be reset to the size of a group an object is contained in when writing to input files.
 
-    There're "parser" and "transformer" attributes, the first of which is a string representing part of a Lark parser
+    There're "grammar" and "transformer" attributes, the first of which is a string representing part of a Lark grammar
     used to extract the object from a string representing part of an .inp (it's not complete---for brevity,
-    a set of common parse rules are retained by the this base class, and the parser string is appended to that)
+    a set of common parse rules are retained by the this base class, and the grammar string is appended to that)
     and the latter of which is a Lark transformer which turns the resulting parse tree into a value of the parent PhitsObject
     """
     name = "base"
-    required = []
-    positional = []
-    optional = []
-    ident_map = dict()
-    value_map = dict()
     subobjects = []
-    nones = dict()
     index = None
     no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
-               "group_by", "separator", "prelude", "max_groups", "group_size", "parser", "transformer"}
+               "group_by", "separator", "prelude", "max_groups", "group_size", "grammar", "transformer"}
     names = {"base", "parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
              "neutron_magnetic_field", "mapped_magnetic_field", "uniform_electromagnetic_field", "mapped_electromagnetic_field",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
@@ -121,10 +117,14 @@ class PhitsObject(Transformer):
     def __init__(self, *args,  **kwargs):
         assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
 
-        if len(kwargs) == 0 and len(args) == 1 and args[0].isinstance(str): # initialization from a section of a PHITS .inp string
-            return from_inp(args[0])
+        if len(args) == 0 and len(kwargs) == 0: # empty initialization, probably for transformer instance
+            return
+        elif len(kwargs) == 0 and len(args) == 1 and args[0].isinstance(str): # initialization from a section of a PHITS .inp string
+            for k, v in self.from_inp(args[0]).__dict__.items():
+                setattr(self, k, v)
         else:
-            for idx, arg in enumerate(self.required):
+            required = [i for i in self.syntax if self.syntax[i][1] is None]   # TODO: think harder about this
+            for idx, arg in enumerate(required):
                 if arg in kwargs:
                     setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
                 elif len(args) >= idx + 1:
@@ -134,7 +134,7 @@ class PhitsObject(Transformer):
 
             remaining = dict()
             for arg, val in kwargs.items():
-                if arg in mapping:
+                if arg in syntax:
                     setattr(self, arg, val)
                 else:
                     remaining[arg] = val
@@ -150,7 +150,15 @@ class PhitsObject(Transformer):
             if remaining:
                 self.parameters = Parameters(**remaining)
 
+        r = dict()
+        for py_ident, (phits_ident, default, valspec) in self.syntax.items():
+            if isinstance(phits_ident, tuple):
+                for i, phits_ident_real in enumerate(phits_ident):
+                    r[phits_ident_real] = (py_ident, default[i], valspec[i])
+            else:
+                r[phits_ident] = (py_ident, default, valspec)
 
+                self.inv_syntax = r
 
     # this method is a candidate for a move
     def idx(ob):
@@ -159,54 +167,95 @@ class PhitsObject(Transformer):
         else:
             return ob
 
-    def ident_to_phits(self, attr):
-        if attr in self.mapping:
-            return self.mapping[attr][0]
-        else:
-            return attr
-
-    def ident_to_py(self, attr):
-        rev = {v[0]: k for k, v in self.mapping.items()}
-        if attr in rev:
-            return rev[attr]
-        else:
-            return attr
 
 
-    def value_to_py(self, attr, val):
-        rev = {v[0]: k for k, v in self.mapping.items()}
-        if attr in rev:
-            res = self.mapping[rev[attr]][2](val, "Python")
-            if callable(res):
-                raise res(attr)
-            else:
-                return res
-        else:
-            return val
+    @staticmethod
+    def sanitize(phits_iden):
+        """Takes un-Larkizable names like '2d-type' and 'emin(2)' to alternatives.
+        Does not need to be bidirectional, just consistent; both the grammar and the corresponding transformer functions are constructed,
+        so this process merely need be univalent between those two constructions."""
+        san = phits_iden.replace("(", "")
+        san = san.replace(")", "")
+        san = san.replace("-", "_")
+        return san
 
-    def value_to_phits(self, attr, val):
-        if attr in self.mapping:
-            res = self.mapping[attr][2](val, "PHITS")
-            if callable(res):
-                raise res(attr)
-            else:
-                return res
-        else:
-            return val
+    @classmethod
+    def grammar(self):
+        """Constructs and returns a full (save for global definitions in PhitsObject.g_grammar) grammar from the syntax self.syntax
+        and the macro-ified grammar self._grammar.
 
+        Macros:
+          @assign_among|<iterable>| -- when <iterable> is a subset of the inv_syntax() dictionary, match assignment statements in that subset.
+          @parse_of|<PhitsObject>|  -- match any valid definition of the PhitsObject in question, according to its grammar."""
+        grammar = self.grammar
+        def grammarmod(directive, replace, suffix=None):
+            """Takes the grammar, finds all appearences of 'directive', calculates and performs textual replacement of the result of 'replace'
+            (which is a fn syntax the result of the directive and match # to the substitution), and optionally appends the result of 'suffix'
+            (a lambda syntax the list of all arguments found to all directives of the given type to a string) to the end of the grammar."""
+            nonlocal grammar, self
+            matches = re.finditer(f"(?<=@{directive})\\|(?:[^|]+|(?R))*+\\|", grammar)
+            rules = []
+            sub = []
+            for i, match in enumerate(matches):
+                arg = eval(match[0][1:-1])
+                sub = replace(i, arg)
+                grammar = re.sub(f"@{directive}\\|(?:[^|]+|(?R))*+\\|", sub, grammar)
+                if suffix is not None:
+                    grammar += suffix(i, arg)
+
+
+
+        # @assign_among
+        def ass_repl(i, subset):
+            nonlocal self
+            sub = []
+            for phits_iden, (py_iden, default, val_spec) in subset.items():
+                san = self.sanitize(phits_iden)
+                other_idens = self.syntax[py_iden][0]
+                i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
+                sub.append(f"{san}{i}")
+
+            return "(" + ' | '.join(sub) + ")"
+
+        def ass_suff(i, subset):
+            nonlocal self
+            rules = []
+            for phits_iden, (py_iden, default, val_spec) in subset.items():
+                san = self.sanitize(phits_iden)
+                other_idens = self.syntax[py_iden][0]
+                i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
+                rules.append(f"{san}{i}: \"{phits_iden}\" \"=\" {val_spec.parse_rule}")
+            return "\n".join(rules)
+
+        grammarmod("assign_among", ass_repl, ass_suff)
+
+        # @parse_of
+        def parse_repl(i, po): # NOTE: must be careful to avoid name collisions in subrules.
+                               # It's possible to uniquify, of course, but too much work.
+            nonlocal self
+            return self.sanitize(po.name) + "start"
+
+        def parse_suff(i, po):
+            nonlocal self
+            return re.sub("start:", self.sanitize(po.name) + "start:", po.grammar)
+
+        grammarmod("parse_of", parse_repl, parse_suff)
+
+        return grammar
 
     def definition(self):
-        pars = Lark(self.parser + PhitsObject.g_parser, g_regex_flags=IGNORECASE, maybe_placeholders=False, ambiguity="resolve")
-        return self.section_title() + continue_lines(Reconstructor(pars).reconstruct(self.tree()))
+        pars = Lark(self.grammar + PhitsObject.g_grammar, g_regex_flags=re.IGNORECASE, maybe_placeholders=False, ambiguity="resolve")
+        return continue_lines(Reconstructor(pars).reconstruct(self.tree()))
 
     def section_title(self):
         sec_name = self.name.replace("_", " ").title()
         return f"[{sec_name}]\n"
 
-    g_parser = r"""
+    g_grammar = r"""
         IDENTIFIER.2: /[a-z0-9-]+/
-        POSINT.5: /[0-9]+/
-        INT.4: /-?[0-9]+/
+        POSINT.5: /[1-9][0-9]*/
+        INT.4: /-?/ (/0/ | POSINT)
+        BIN: /0/ | /1/
         NUMBER.3: INT ["." [POSINT]] ["e" INT]
         PATHNAME: "/"? ((ARRAYENTRY | /[a-z][a-z0-9_.-]+/) "/")* (ARRAYENTRY | /[a-z][a-z0-9_.-]+/) "/"?
         ARRAYENTRY: IDENTIFIER "(" POSINT ")"
@@ -214,22 +263,18 @@ class PhitsObject(Transformer):
         binop{sym}: computation sym computation
         PI.1: /pi/
         VARIABLE: /x/
-        computation: " "* (NUMBER | PI
+        computation: " "* (NUMBER | PI | VARIABLE
                             | binop{/\+/} | binop{/-/} | binop{/\*/} | binop{/\//} | binop{/\*\*/}
                             | function{/float/} | function{/int/} | function{/abs/} | function{/exp/} | function{/log/} | function{/log10/}
 	      	            | function{/max/} | function{/min/} | function{/mod/} | function{/nint/} | function{/sign/} | function{/sqrt/}
 	      	            | function{/acos/} | function{/asin/} | function{/atan/} | function{/atan2/} | function{/cos/}
 	      	            | function{/cosh/} | function{/sin/} | function{/sinh/} | function{/tan/} | function{/tanh/}) " "*
-        functiondef: " "* (NUMBER | PI | VARIABLE
-                           | binop{/\+/} | binop{/-/} | binop{/\*/} | binop{/\//} | binop{/\*\*/}
-                           | function{/float/} | function{/int/} | function{/abs/} | function{/exp/} | function{/log/} | function{/log10/}
-	      	           | function{/max/} | function{/min/} | function{/mod/} | function{/nint/} | function{/sign/} | function{/sqrt/}
-	      	           | function{/acos/} | function{/asin/} | function{/atan/} | function{/atan2/} | function{/cos/}
-	      	           | function{/cosh/} | function{/sin/} | function{/sinh/} | function{/tan/} | function{/tanh/}) " "*
+
         escapedcomputation: "{" computation "}" -> computation
         numbergrid: numberline+
         numberline: " "* (computation " "+)+ computation? "\n"
         columntitle: " "* (IDENTIFIER " "+)+ IDENTIFIER? "\n"
+        SPACE: /[ \t]+/
         %ignore /\n(?=\n)/
         %import common.WS
         """
@@ -241,33 +286,87 @@ class PhitsObject(Transformer):
     PATHNAME = str
     ARRAYENTRY = str
     PI = pi
+
     def computation(self, comp):
-
-        if not isinstance(comp[0], Tree):
+        if isinstance(comp[0], Tree):
+            if comp[0].data == "function":
+                fname = comp[0].children[0]
+                fname = "round" if fname == "nint" else fname
+                arg = comp[0].children[1]
+                if arg == "x":
+                    return lambda x: eval(fname)(x)
+                elif callable(arg):
+                    return lambda x: eval(fname)(arg(x))
+                else:
+                    return eval(f"{fname}(arg)")
+            elif comp[0].data == "binop":
+                op = comp[0].children[1]
+                arg1 = comp[0].children[0]
+                arg2 = comp[0].children[2]
+                unfix = eval(f"lambda x, y: x {op} y")
+                if arg1 == "x" or arg2 == "x":
+                    return eval(f"lambda x: {arg1} {op} {arg2}")
+                elif callable(arg1) and not callable(arg2):
+                    return lambda x: unfix(arg1(x), arg2)
+                elif not callable(arg1) and callable(arg2):
+                    return lambda x: unfix(arg1, arg2(x))
+                elif callable(arg1) and callable(arg2):
+                    return lambda x: unfix(arg1(x), arg2(x))
+                else:
+                    return unfix(arg1, arg2)
+        else:
             return comp[0]
-        elif comp[0].data == "function":
-            matched = comp[0].children
-            fname = matched[0].lower()
-            try:
-                return eval(fname)(matched[1])
-            except NameError: # function not immediately Pythonizable
-                if fname == "nint":
-                    return round(matched[1])
-        elif comp[0].data == "binop":
-            matched = comp[0].children
-            return eval(f'lambda x, y: x {matched[1]} y')(matched[0], matched[2])
 
+        
     numbergrid = list
     numberline = list
-    # TODO: consider whether functiondef deserves conversion into Python function object or not; we'd have to convert back which may suck.
 
 
     @classmethod
     def from_inp(self, segment):
-        parser = Lark(self.parser + PhitsObject.g_parser, g_regex_flags=IGNORECASE)
-        transformer = PhitsObject() * self()
-        tree = parser.parse(segment)
-        breakpoint()
+        transformer = Transformer()
+        transformer.parsing = self
+        for phits_ident, (py_ident, default, valspec) in self.inv_syntax().items():
+            scope = locals() | {"syntax": self.syntax, "py_ident": py_ident, "phits_ident": phits_ident, "valspec": valspec}
+
+            # this eval hack is motivated by a local function definition simply...not working---the function got overwritten each iteration
+            san = self.sanitize(phits_ident)
+            exec(f"""def {san}(s, tr):
+    if isinstance(phits_ident, tuple):
+        return (py_ident, dict(syntax[py_ident][0].index(phits_ident), valspec.python(tr[0])))
+    else:
+        return (py_ident, valspec.python(tr[0]))""", scope)
+
+            setattr(transformer, san, scope[san].__get__(transformer))
+
+        def start(s, tr):
+            divided = dict()
+            for py_ident, val in tr:
+                if isinstance(val, dict):
+                    if py_ident in divided:
+                        divided[py_ident] |= val
+                    else:
+                        divided[py_ident] = val
+                else:
+                    divided[py_ident] = val
+
+            for k, v in divided.items():
+                if isinstance(v, dict):
+                    divided[k] = tuple((v[i] for i in sorted(v.keys())))
+
+            return s.parsing(**divided)
+
+        setattr(transformer, "start", start.__get__(transformer))
+
+        # Any methods in subclass not escaped with an underscore are added to transformer
+        for attr in set(dir(self)) - set(dir(PhitsObject)):
+            if callable(attr) and attr[0] != "_":
+                setattr(transformer, attr, dir(self)[attr].__get__(transformer))
+
+        transformer = PhitsObject() * transformer
+
+        grammar = Lark(self.grammar() + PhitsObject.g_grammar, g_regex_flags=re.IGNORECASE)
+        tree = grammar.parse(segment)
         return transformer.transform(tree)
 
 
@@ -285,179 +384,9 @@ class PhitsObject(Transformer):
 
 
 
-# Some helper functions useful in consisely defining value_map parameters.
-# The non-inv functions go from Python -> PHITS format, and the inv's go the opposite.
-# Each function must return a function that validates the input value of a given parameter and outputs a valid version of it in the output;
-# e.g. the non-inv functions are expected to be called on values of parameters passed via Python, validate they're acceptable,
-# and produce the corresponding parameter value that could be pasted into the PHITS file.
-# If a parameter fails validation, a descriptive ValueError should be returned.
-# The PHITS -> Python is guaranteed to have the correct type, conditional on parser correctness, but Python input needs checked.
-
-
-def choice10(c_style=False, true=True, false=False):
-    def r(val, out):
-        if out == "PHITS":
-            if val == true:
-                return 0 if c_style else 1
-            elif val == false:
-                return 1 if c_style else 0
-            else:
-                return lambda var: ValueError(f"`{var}` must be either True or False; got {val}.")
-        elif out == "Python":
-            if val == 0:
-                return true if c_style else false
-            elif val == 1:
-                return false if c_style else true
-            else:
-                return lambda var: ValueError(f"`{self.ident_map[var]}` must be either 0 or 1; got {val}.")
-    return r
 
 
 
-def integer(val, out):
-    if out == "PHITS":
-        if isinstance(val, int):
-            return val
-        else:
-            return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
-    elif out == "Python":
-        if x % 1 == 0:
-            return val
-        else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be an integer; got {val}.")
-
-
-
-def real(val, out):
-    if out == "PHITS":
-        if isinstance(val, float):
-            return val
-        else:
-            return lambda var: ValueError(f"`{var}` must be a float; got {val}.")
-    elif out == "Python":
-        return val
-
-
-
-def posint(val, out):
-    if out == "PHITS":
-        if isinstance(val, int) and val > 0:
-            return val
-        else:
-            return lambda var: ValueError(f"`{var}` must be a positive integer; got {val}.")
-    elif out == "Python":
-        if val > 0:
-            return val
-        else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be positive; got {val}.")
-
-
-
-def posreal(val, out):
-    if out == "PHITS":
-        if isinstance(val, float) and val > 0:
-            return val
-        else:
-            lambda var: ValueError(f"`{var}` must be a positive floating-point value; got {val}.")
-    elif out == "Python":
-        if val > 0:
-            return val
-        else:
-            lambda var: ValueError(f"`{self.ident_map[var]}` must be positive; got {val}.")
-
-
-
-
-
-def triplechoice(val, out):
-    if out == "PHITS":
-        if isinstance(val, int):
-            return True if val > 0 else False
-        else:
-            return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
-    elif out == "Python":
-        if val > 0:
-            return True
-        else:
-            return False
-
-
-
-
-
-
-
-
-def negdisable(val, out):
-    if out == "PHITS":
-        if isinstance(val, int) and val > 0:
-            return val
-        elif val is None:
-            return -1.0
-        else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be a positive integer or None; got {val}.")
-    elif out == "Python":
-        if val > 0:
-            return val
-        else:
-            return None
-
-
-
-
-def between(start, stop):
-    def r(val, out):
-        if out == "PHITS":
-            if isinstance(val, int) and val >= start and val <= stop:
-                return val
-            else:
-                return lambda var: ValueError(f"`{var}` must be an integer between {start} and {stop}, inclusive; got {val}.")
-        elif out == "Python":
-            if val >= start and val <= stop:
-                return val
-            else:
-                return lambda var: ValueError(f"`{self.ident_map[var]}` must be between {start} and {stop}, inclusive; got {val}.")
-    return r
-
-
-
-def zerospecial(val, out):
-    if out == "PHITS":
-        if isinstance(val, int):
-            if val == 0:
-                return zero
-            else:
-                return val
-        else:
-            return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
-    elif out == "Python":
-        if val == zero:
-            return 0
-        else:
-            return val
-    return r
-
-# def allornothing():
-#     def r(val, out):
-#         if out == "PHITS":
-#             if
-
-def finbij(dic):
-    def r(val, out):
-        if out == "PHITS":
-            if val in dic:
-                return dic[val]
-            else:
-                return lambda var: ValueError(f"`{var}` must be one of {list(dic.keys())}; got {val}.")
-        elif out == "Python":
-            rev = {v: k for k, v in dic.items()}
-            if val in rev:
-                return rev[val]
-            else:
-                return lambda var: ValueError(f"`{self.ident_map[var]}` must be one of {list(rev.keys())}; got {val}.")
-
-
-    return r
 
 class Parameters(PhitsObject, Transformer):
     """A "dictionary with an attitude" representing an entry in the [Parameters] section of an input file.
@@ -467,137 +396,129 @@ class Parameters(PhitsObject, Transformer):
     >>> print(Parameters(ndedx=2, dbcutoff=3.3).definition())
     ndedx = 2
     dbcutoff = 3.3
-
     """
     name = "parameters"
-    # implicitly defines the __init__ and what arguments are acceptable to it
-    # "Python argument name": ("PHITS name", default, fn<validate_and_remap>)
-    mapping = {"control": ("icntl", "normal",
-                           finbij({"normal": 0, "output_cross-section": 1, "output_echo_only": 3, "all_reg_void": 5,
+    # implicitly defines the __init__, what arguments are acceptable to it, and how to generate the parser and tree.
+    # "Python argument name": ("PHITS name", default, subclass(ValSpec), RequirementGroup)
+    syntax = {"control": ("icntl",
+                           FinBij({"normal": 0, "output_cross-section": 1, "output_echo_only": 3, "all_reg_void": 5,
                                    "source_check": 6, "show_geometry": 7, "show_geometry_with_xyz": 8, "show_regions": 9,
                                    "show_regions_with_tally": 10, "show_3d_geometry": 11, "use_dumpall": 12, "sum_tally": 13,
-                                   "auto_volume": 14, "ww_bias_tally": 15, "analysis_script": 16, "anatally": 17})),
-               "max_histories": ("maxcas", 10, posint),
-               "max_batches": ("maxbch", 10, posint),
-               "nuclear_memory_rescale": ("xsmemory", 1.0, posreal),
-               "timeout": ("timeout", None, negdisable),
-               "stdev_control": ("istdev", "normal", finbij({-2:"history_restart", -1:"batch_restart", 0:"normal", 1:"batch", 2:"history"})),
-               "share_tallies": ("italsh", False, choice10()),
-               "check_consistency": ("ireschk", False, choice10(c_style=True)),
-               "xor_prng": ("nrandgen", True, choice10()),
-               "seed_skip": ("irskeep", 0, integer),
-               "random_seed": ("rseed", 6.657299061401e12, real),
-               "seed_from_time": ("itimrand", False, choice10()),
-               # bitrseed???
-               "proton_e_cutoff": ("emin(1)", 1.0e-3, posreal),
-               "neutron_e_cutoff": ("emin(2)", 1.0e-11, posreal),
-               "pion+_e_cutoff": ("emin(3)", 1.0e-3, posreal),
-               "pion0_e_cutoff": ("emin(4)", 1.0e-3, posreal),
-               "pion-_e_cutoff": ("emin(5)", 1.0, posreal),
-               "muon+_e_cutoff": ("emin(6)", 1.0e-3, posreal),
-               "muon-_e_cutoff": ("emin(7)", 1.0e-3, posreal),
-               "kaon+_e_cutoff": ("emin(8)", 1.0e-3, posreal),
-               "kaon0_e_cutoff": ("emin(9)", 1.0e-3, posreal),
-               "kaon-_e_cutoff": ("emin(10)", 1.0e-3, posreal),
-               "other_e_cutoff": ("emin(11)", 1.0, posreal),
-               "electron_e_cutoff": ("emin(12)", 1.0e9, posreal),
-               "positron_e_cutoff": ("emin(13)", 1.0e9, posreal),
-               "photon_e_cutoff": ("emin(14)", 1.0e-3, posreal),
-               "deuteron_e_cutoff": ("emin(15)", 1.0e-3, posreal),
-               "triton_e_cutoff": ("emin(16)", 1.0e-3, posreal),
-               "he-3_e_cutoff": ("emin(17)", 1.0e-3, posreal),
-               "he-4_e_cutoff": ("emin(18)", 1.0e-3, posreal),
-               "nucleon_e_cutoff": ("emin(19)", 1.0e-3, posreal),
-               "proton_e_max": ("dmax(1)", 1.0e-3, posreal),
-               "neutron_e_max": ("dmax(2)", 20.0, posreal),
-               "electron_e_max": ("dmax(12)", 1.0e9, posreal),
-               "positron_e_max": ("dmax(13)", 1.0e9, posreal),
-               "photon_e_max": ("dmax(14)", 1.0e3, posreal),
-               "deuteron_e_max": ("dmax(15)", 1.0e-3, posreal),
-               "he-4_e_max": ("dmax(18)", 1.0e-3, posreal),
-               "photonuclear_e_max": ("dpnmax", 0.0, posreal),
+                                   "auto_volume": 14, "ww_bias_tally": 15, "analysis_script": 16, "anatally": 17}), None),
+               "max_histories": ("maxcas", PosInt(), None),
+               "max_batches": ("maxbch", PosInt(), None),
+               "nuclear_memory_rescale": ("xsmemory", 1.0, PosReal(), None),
+               "timeout": ("timeout", NegDisable(), None),
+               "stdev_control": ("istdev", FinBij({-2:"history_restart", -1:"batch_restart", 0:"normal", 1:"batch", 2:"history"}, None)),
+               "share_tallies": ("italsh", Choice10(), None),
+               "check_consistency": ("ireschk", Choice10(c_style=True), None),
+               "xor_prng": ("nrandgen", Choice10(), None),
+               "seed_skip": ("irskeep", Integer(), None),
+               "random_seed": ("rseed", Real(), None),
+               "seed_from_time": ("itimrand", Choice10(), None),
+               # bitrseed?,
+               "proton_e_cutoff": ("emin(1)", PosReal(), None),
+               "neutron_e_cutoff": ("emin(2)", PosReal(), None),
+               "pionp_e_cutoff": ("emin(3)", PosReal(), None),
+               "pion0_e_cutoff": ("emin(4)", PosReal(), None),
+               "pionm_e_cutoff": ("emin(5)", PosReal(), None),
+               "muonp_e_cutoff": ("emin(6)", PosReal(), None),
+               "muonm_e_cutoff": ("emin(7)", PosReal(), None),
+               "kaonp_e_cutoff": ("emin(8)", PosReal(), None),
+               "kaon0_e_cutoff": ("emin(9)", PosReal(), None),
+               "kaonm_e_cutoff": ("emin(10)", PosReal(), None),
+               "other_e_cutoff": ("emin(11)", PosReal(), None),
+               "electron_e_cutoff": ("emin(12)", PosReal(), None),
+               "positron_e_cutoff": ("emin(13)", PosReal(), None),
+               "photon_e_cutoff": ("emin(14)", PosReal(), None),
+               "deuteron_e_cutoff": ("emin(15)", PosReal(), None),
+               "triton_e_cutoff": ("emin(16)", PosReal(), None),
+               "he3_e_cutoff": ("emin(17)", PosReal(), None),
+               "he4_e_cutoff": ("emin(18)", PosReal(), None),
+               "nucleon_e_cutoff": ("emin(19)", PosReal(), None),
+               "proton_e_max": ("dmax(1)", PosReal(), None),
+               "neutron_e_max": ("dmax(2)", PosReal(), None),
+               "electron_e_max": ("dmax(12)", PosReal(), None),
+               "positron_e_max": ("dmax(13)", PosReal(), None),
+               "photon_e_max": ("dmax(14)", PosReal(), None),
+               "deuteron_e_max": ("dmax(15)", PosReal(), None),
+               "he4_e_max": ("dmax(18)", PosReal(), None),
+               "photonuclear_e_max": ("dpnmax", PosReal(), None),
                # lib(i)
-                "charged_e_min": ("esmin", 0.001, posreal),
-               "charged_e_max": ("esmax", 300000.0, posreal),
+               "charged_e_min": ("esmin", PosReal(), None),
+               "charged_e_max": ("esmax", PosReal(), None),
                # cmin
-                "electron-positron_track-structure_e_min": ("etsmin", 1e-6, posreal),
-               "electron-positron_track-structure_e_max": ("etsmax", 1e-2, posreal),
-               "nucleon_track-structure_e_max": ("tsmax", 1e-3, posreal),
-               "electric_transport_type": ("negs", "PHITS", finbij({"PHITS": -1, "ignore": 0, "EGS5": 1})),
-               "automatic_e_bounds": ("nucdata", True, choice10()),
-               "electron-positron_adjust_weight_over_e_max": ("ieleh", False, choice10()),
-               "nucleon-nucleus_model_switch_e": ("ejamnu", 20.0, posreal),
-               "pion-nucleus_model_switch_e": ("ejampi", 20.0, posreal),
-               "isobar_max_e": ("eisobar", 0.0, posreal),
-               "isobar_model": ("isobar", False, choice10()),
+                "electron_positron_track_structure_e_min": ("etsmin", PosReal(), None),
+               "electron_positron_track_structure_e_max": ("etsmax", PosReal(), None),
+               "nucleon_track_structure_e_max": ("tsmax", PosReal(), None),
+               "electric_transport_type": ("negs", FinBij({"PHITS": -1, "ignore": 0, "EGS5": 1}), None),
+               "automatic_e_bounds": ("nucdata", Choice10(), None),
+               "electron_positron_adjust_weight_over_e_max": ("ieleh", Choice10(), None),
+               "nucleon_nucleus_model_switch_e": ("ejamnu", PosReal(), None),
+               "pion_nucleus_model_switch_e": ("ejampi", PosReal(), None),
+               "isobar_max_e": ("eisobar", PosReal(), None),
+               "isobar_model": ("isobar", Choice10(), None),
                # etc.
                 }
     implications = "" # the value of some options may restrict the value of others. ("ident1", fn<pred>): ("ident2": fn<pred>)
 
-
-    # parser/transformer stuff
-    parser = r"""
-        %ignore WS
-        start: assignment*
-        assignment: iden "=" val
-        iden: IDENTIFIER | ARRAYENTRY
-        val: computation | PATHNAME"""
-
-    def iden(self, ide):
-        return str(ide[0])
-
-    def val(self, va):
-        return float(va[0])
-
-    def assignment(self, ass):
-        return (self.ident_to_py(ass[0]), self.value_to_py(ass[0], ass[1]))
-
-    def start(self, asses):
-        return Parameters(**dict(asses))
-
     def tree(self):
-        start = []
-        for k, v in self.__dict__.items(): # break out into cases to handle more complicated remapping
-            outi = self.ident_to_phits(k)
-            outv = self.value_to_phits(k, v)
-            if "(" in outi:
-                if isinstance(outv, str):
-                    start.append(Tree(Token('RULE', 'assignment'),
-                                      [Tree(Token("RULE", 'iden'), [Token("ARRAYENTRY", outi)]),
-                                       Tree(Token("RULE", 'val'), [Token("PATHNAME", outv)])]))
-                elif isinstance(outv, float):
-                    start.append(Tree(Token('RULE', 'assignment'),
-                                      [Tree(Token("RULE", 'iden'), [Token("ARRAYENTRY", outi)]),
-                                       Tree(Token("RULE", 'val'), [Tree(Token("RULE", "computation"), [outv])])]))
-            else:
-                if isinstance(outv, str):
-                    start.append(Tree(Token('RULE', 'assignment'),
-                                      [Tree(Token("RULE", "iden"), [Token("IDENTIFIER", outi)]),
-                                       Tree(Token("RULE", 'val'), [Token("PATHNAME", outv)])]))
-                elif isinstance(outv, float) or isinstance(outv, int):
-                    start.append(Tree(Token('RULE', 'assignment'),
-                                      [Tree(Token("RULE", 'iden'), [Token("IDENTIFIER", outi)]),
-                                       Tree(Token("RULE", 'val'), [Tree(Token("RULE", "computation"), [outv])])]))
-        r =  Tree(Token('RULE', 'start'), start)
-        breakpoint()
+        tree = []
+        for py_attr, py_val in self.__dict__.items():
+            if py_attr in self.syntax:
+                phits_attr = self.syntax[py_attr][0]
+                valspec = self.syntax[py_attr][2]
+                phits_val = valspec.phits(py_val)
+                if "(" in phits_attr or ")" in phits_attr:
+                    phits_attr = Token("ARRAYENTRY", phits_attr)
+                else:
+                    phits_attr = Token("IDENTIFIER", phits_attr)
 
-        return r
+                if isinstance(phits_val, str):
+                    tree.append(Tree(Token("RULE", "assignment"), [phits_attr, Token("PATHNAME", py_val)]))
+                else:
+                    tree.append(Tree(Token("RULE", "assignment"), [phits_attr, Tree(Token("RULE", "computation"),
+                                                                                    [Token("NUMBER", py_val)])]))
 
+        return Tree(Token("RULE", "start"), tree)
+
+
+
+    # grammar/transformer stuff
+    grammar = r"""
+    %ignore SPACE
+    start: assignment+
+    assignment: @assign_among|self.inv_syntax|
+    """
+
+    def assignment(self, tr):
+        return (self.inv_syntax[tr[0]][0], self.inv_syntax[tr[0]][2].python(tr[1]))
+
+    def start(self, tr):
+        return Parameters(**dict(tr))
 
     # bookkeeping
-    def __init__(self, **kwargs):
-        for attr, val in kwargs.items():
-            if attr in self.mapping:
-                setattr(self, attr, val)
-            else:
-                raise ValueError( \
+    def __init__(self, *args, **kwargs):
+        if len(args) == 1 and isinstance(args[0], str):
+            for k, v in self.from_inp(args[0]).__dict__.items():
+                setattr(self, k, v)
+        elif len(args) == 0:
+            for attr, val in kwargs.items():
+                if attr in self.syntax:
+                    self.syntax[attr][2].phits(val)
+                    setattr(self, attr, val)
+                else:
+                    raise ValueError( \
 f"Argument `{attr}` (value `{val}`) not a valid global PHITS parameter---check that all object initializer keword arguments are correct.")
+        else:
+            raise ValueError(f"Parameters() takes exclusively keyword arguments unless initializing from .inp string; got {args}.")
 
 
     def __getitem__(self, key):
         return self.__dict__[key]
+
     def empty(self):
-        return True if self.__dict__ == {"name": "parameters"} else False
+        return True if self.__dict__.keys() else False
 
 
 # I want to get rid of this

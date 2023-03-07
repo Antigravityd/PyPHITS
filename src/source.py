@@ -3,45 +3,178 @@
 
 # Currently, no a-type mesh support for the elevation angles.
 from base import *
+from collections import namedtuple
+
+common = {"type": ("s-type", None, finbij({})),
+          "projectile": ("proj", None, finbij({})),
+          "spin": (("sx", "sy", "sz"), (0, 0, 0), (posreal, posreal, posreal)),
+          "mask": (("reg", "ntmax"), ("all", 1000), (IsA(Cell, index=True), posint)),
+          "transform": ("trcl", "none", IsA(Transform, index=True)),
+          "weight": ("wgt", 1.0, posreal),
+          "charge_override": ("izst", "none", posreal),
+          "counter_start": (("cnt(1)", "cnt(2)", "cnt(3)"), (0, 0, 0), (posint, posint, posint)),
+          "fissile": ("ispfs", False, finbij({False: 0, "fissions": 1, "neutrons": 2}))
+          # ibatch?
+          }
+
+semi_common = {"elevation": ("dir", 1.0, oneof(posreal, finbij({"isotropic": "all"}), isa(AngleDistribution, "data"))) #TODO:isa, oneof
+               "azimuth": ("phi", "random", posreal), # TODO: random is sus
+               "dispersion": ("dom", 0.0, oneof(posreal, finbij({"cos^2": -1})))
+               "mono_energy": ("e0", None, posreal),
+               "spectrum": ("e-type", None, isa(EnergyDistribution))}
+# TODO: figure out how to deduce that exactly one of mono_energy, e-type is a required argument.
+
+
+
+# TODO: implement parser macros and generation of transformers in PhitsObject methods
+class Cylindrical(PhitsObject):
+    mapping = common | {"center": (("x0", "y0"), (0.0, 0.0), (posreal, posreal)),
+                        "zbounds": (("z0", "z1"), (0.0, 0.0), (posreal, posreal)),
+                        "radius": ("r0", 0.0, posreal),
+                        "cutout_radius": ("r1", 0.0, posreal)} | semi_common
+    _parser = r"""
+    start: "s-type" "=" "1" "\n" (assignment)+
+
+    assignment: normal | etype | dir
+
+
+    assignment: IDENTIFIER "=" computation "\n"
+
+    normal: @assign_among([i for i in self.mapping.keys() if i not in ["spectrum", "elevation"]]) "\n"
+
+    etype: @parseof(EnergyDistribution) // _LINEBRK?
+
+    dir: "dir" "=" computation | "dir" "=" /all/ | @parseof(AngleDistribution) // _LINEBRK?
+    """
+
+    def dir(s, tr):
+        if isinstance(tr[0], AngleDistribution):
+            return
+
+class Rectangular(PhitsObject):
+    mapping = common | {"xbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
+                        "ybounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
+                        "zbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal))} | semi_common
+
 
 class Source(PhitsObject): # currently no support for cnt(i) or ibatch common parameters
+
+    mapping = {"type": ("s-type", None, finbij({})),
+               "projectile": ("proj", None, finbij({})),
+               "spin": (("sx", "sy", "sz"), (0, 0, 0), (posreal, posreal, posreal)),
+               "mask": (("reg", "ntmax"), ("all", 1000), (isa(Cell), posint)),
+               "transform": ("trcl", "none", isa(Transform)),
+               "weight": ("wgt", 1.0, posreal),
+               "charge_override": ("izst", "none", posreal),
+               "counter_start": (("cnt(1)", "cnt(2)", "cnt(3)"), (0, 0, 0), (posint, posint, posint)),
+               "fissile": ("ispfs", False, finbij({False: 0, "fissions": 1, "neutrons": 2}))
+               # ibatch?
+               "global_scaling":
+               }
     parser = r"""
+    %ignore SPACE
     start: assignment* (source | ("<source>" "=" computation source)+) assignment*
 
     source: "s-type" "=" POSINT (assignment | etype | ttype | atype)*
 
-    assignment: IDENTIFIER "=" computation
-
 
     etype: e1 | e2 | e3 | e4 | e5 | e6 | e7 | e20 | e25 | e28
 
-    e1: " "* "e-type"i " "* "=" " "* /1|8|11|18|21|22|31|32/ " "* "\n" assignment numbergrid
-    e4: " "* "e-type"i " "* "=" " "* /4|9|14|19|23|24|33|34/  " "* "\n" assignment numbergrid assignment numbergrid
-    e2: " "* "e-type"i " "* "=" " "* /2|12/  " "* "\n" assignment ~ 4
-    e3: " "* "e-type"i " "* "=" " "* /3/  " "* "\n" assignment ~
-    e5: " "* "e-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
-    e6: " "* "e-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 5 numbergrid
-    e7: " "* "e-type"i " "* "=" " "* /7/  " "* "\n" assignment ~ 6 numbergrid
-    e20: " "* "e-type"i " "* "=" " "* /20/  " "* "\n" assignment
-    e25: " "* "e-type"i " "* "=" " "* /25|26/  " "* "\n" assignment ~ 14
-    e28: " "* "e-type"i " "* "=" " "* /28|29/  " "* "\n" assignment ~ 7
+    e1:  "e-type"  "="  ("1" | "8" | "11" | "18" | "21" | "22" | "31" | "32")  "\n" assignment numbergrid
+    e4:  "e-type"  "="  ("4" | "9" | "14" | "19" | "23" | "24" | "33" | "34")   "\n" assignment numbergrid assignment numbergrid
+    e2:  "e-type"  "="  ("2" | "12")   "\n" assignment ~ 4
+    e3:  "e-type"  "="  ("3")   "\n" assignment ~
+    e5:  "e-type"  "="  ("5" | "15")   "\n" assignment ~ 4
+    e6:  "e-type"  "="  ("6" | "16")   "\n" assignment ~ 5 numbergrid
+    e7:  "e-type"  "="  ("7")   "\n" assignment ~ 6 numbergrid
+    e20:  "e-type"  "="  ("20")   "\n" assignment
+    e25:  "e-type"  "="  ("25" | "26")   "\n" assignment ~ 14
+    e28:  "e-type"  "="  ("28" | "29")   "\n" assignment ~ 7
 
-    atype: p1 | p4 | p5 | p6
+    atype: a1 | a4 | a5 | a6
 
-    p1: " "* "a-type"i " "* "=" " "* /1|11/  " "* "\n" assignment numbergrid
-    p4: " "* "a-type"i " "* "=" " "* /4|14/  " "* "\n" assignment numbergrid assignment numbergrid
-    p5: " "* "a-type"i " "* "=" " "* /5|15/  " "* "\n" assignment ~ 4
-    p6: " "* "a-type"i " "* "=" " "* /6|16/  " "* "\n" assignment ~ 3 numbergrid
+    a1:  "a-type"  "="  ("1" | "11")   "\n" assignment numbergrid
+    a4:  "a-type"  "="  ("4" | "14")   "\n" assignment numbergrid assignment numbergrid
+    a5:  "a-type"  "="  ("5" | "15")   "\n" assignment ~ 4
+    a6:  "a-type"  "="  /6|16/   "\n" assignment ~ 2 (assignment numbergrid?)?
 
     ttype: t0 | t3 | t4 | t5 | t6  | t100
 
-    t0: " "* "t-type"i " "* "=" " "* /0|1|2/  " "* "\n" assignment ~ 5
-    t3: " "* "t-type"i " "* "=" " "* /3/  " "* "\n" assignment numbergrid
-    t4: " "* "t-type"i " "* "=" " "* /0|1|2/  " "* "\n" assignment numbergrid assignment numbergrid
-    t5: " "* "t-type"i " "* "=" " "* /5/  " "* "\n" assignment ~ 4
-    t6: " "* "t-type"i " "* "=" " "* /6/  " "* "\n" assignment ~ 5 numbergrid
-    t100: " "* "t-type"i " "* "=" " "* /100/  " "* "\n" assignment ~ 2
+    t0:  "t-type"  "="  /0|1|2/   "\n" assignment ~ 5
+    t3:  "t-type"  "="  "3"   "\n" assignment numbergrid
+    t4:  "t-type"  "="  "4"  "\n" assignment numbergrid (assignment numbergrid?)?
+    t5:  "t-type"  "="  "5"   "\n" assignment ~ 4
+    t6:  "t-type"  "="  "6")  "\n" assignment ~ 4 (assignment numbergrid?)?
+    t100:  "t-type"  "="  "100"  "\n" assignment ~ 2
+    assignment: IDENTIFIER "=" computation "\n"
     """
+
+    def assignment(self, ass):
+        return (ass[0], ass[1])
+
+    def t100(self, sec):
+        raise NotImplementedError("Can't currently process things that require external files.")
+
+    def t6(self, sec):
+        weight_func = sec[0][1]
+        n_weight_groups = sec[1][1]
+        bounds = (sec[2][1], sec[3][1])
+        generation_option = sec[4][1]
+        if generation_option == 0:
+            return ("time_distribution", {"function": weight_func, "n_bins": n_weight_groups, "bounds": bounds, "adjust": "weights"})
+        else:
+            return ("time_distribution", {"function": weight_func, "n_bins": n_weight_groups, "bounds": bounds, "adjust": "both",
+                                          "particles_per_bin": sec[5]})
+
+    def t5(self, sec):
+        weight_func = sec[0][1]
+        n_weight_groups = sec[1][1]
+        bounds = (sec[2][1], sec[3][1])
+        return ("time_distribution", {"function": weight_func, "n_bins": n_weight_groups, "bounds": bounds, "adjust": "particles"})
+
+    def t4(self, sec):
+        n_time_bins = sec[0][1]
+        weights = sec[1]
+        generation_option = sec[2][1]
+        if generation_option == 0:
+            return ("time_distribution", {"bins": weights, "adjust": "weights"})
+        else:
+            return ("time_distribution", {"bins": weights, "adjust": "weights", "particles_per_bin": sec[3]})
+
+    def t3(self, sec):
+        n_time_bins = sec[0][1]
+        weights = sec[1]
+        return ("time_distribution", {"bins": weights, "adjust": "particles"})
+
+    def t0(self, sec):
+        typ = sec[0]
+        center = sec[1]
+        width = sec[2]
+        number = sec[3]
+        delta = sec[4]
+        cutoff = sec[5]
+        if typ == 0:
+            pass
+        elif typ == 1:
+            # TODO: update above to be tuples, and think about using namedtuple()
+            return ("time_distribution", ("rectangle", [center, number, delta]))
+        elif typ == 2:
+            return ("time_distribution", ("gaussian", [center, number, delta, cutoff]))
+
+    def a6(self, sec):
+        unit = sec[0]
+        func = sec[1][1]
+        n_groups = sec[2][1]
+        if len(sec) in [3, 4]:
+            return ("angle_distribution", {"function": func, "n_groups": n_groups, "units": "degree" if unit == "6" else "degree",
+                                           "adjust": "weights"})
+        else:
+            return ("angle_distribution", {"function": func, "n_groups": n_groups, "units": "degree" if unit == "6" else "degree",
+                                           "adjust": "both", "particles_per_bin": sec[4]})
+
+    def a5(self, sec):
+
+
 
     def start(self, tree):
 
