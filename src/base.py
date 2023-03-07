@@ -209,7 +209,7 @@ class PhitsObject(Transformer):
         def ass_repl(i, subset):
             nonlocal self
             sub = []
-            for phits_iden, (py_iden, default, val_spec) in subset.items():
+            for phits_iden, (py_iden, val_spec, arg_order) in subset.items():
                 san = self.sanitize(phits_iden)
                 other_idens = self.syntax[py_iden][0]
                 i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
@@ -220,7 +220,7 @@ class PhitsObject(Transformer):
         def ass_suff(i, subset):
             nonlocal self
             rules = []
-            for phits_iden, (py_iden, default, val_spec) in subset.items():
+            for phits_iden, (py_iden, val_spec, argorder) in subset.items():
                 san = self.sanitize(phits_iden)
                 other_idens = self.syntax[py_iden][0]
                 i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
@@ -240,6 +240,25 @@ class PhitsObject(Transformer):
             return re.sub("start:", self.sanitize(po.name) + "start:", po.grammar)
 
         grammarmod("parse_of", parse_repl, parse_suff)
+
+        # @assign_then_grid
+        def grid_repl(i, entr):
+            phits_iden = entr[0]
+            sub = f"{self.sanitize(phits_iden)}"
+            return "(" + sub + ")"
+
+        def grid_suff(i, entr):
+            phits_iden = entr[0]
+            val_spec = entr[1]
+            rule = f"""
+            {self.sanitize(phits_iden)}: \"{phits_iden}\" \"=\" \"{val_spec.parse_rule}\" "\n" numbergrid
+            """
+            return rule
+
+        grammarmod("assign_then_grid", grid_repl, grid_suff)
+
+
+
 
         return grammar
 

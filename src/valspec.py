@@ -1,5 +1,7 @@
 
 class ValSpec():
+    def __init__(self, parse_rule):
+        self.parse_rule = parse_rule
     def __or__(self, other):
         # TODO: think about if copying is necessary
         if isinstance(self, OneOf) and isinstance(other, OneOf):
@@ -17,6 +19,7 @@ class ValSpec():
 
 class Choice10(ValSpec):
     def __init__(self, c_style=False, true=True, false=False):
+        super().__init__("INT")
         self.c_style = c_style
         self.true = true
         self.false = false
@@ -39,6 +42,9 @@ class Choice10(ValSpec):
 
 
 class Integer(ValSpec):
+    def __init__(self):
+        super().__init__("INT")
+
     def phits(self, val):
         if isinstance(val, int):
             return val
@@ -52,6 +58,9 @@ class Integer(ValSpec):
             return lambda var: ValueError(f"`{self.ident_map[var]}` must be an integer; got {val}.")
 
 class Real(ValSpec):
+    def __init__(self):
+        super().__init__("NUMBER")
+
     def phits(self, val):
         if isinstance(val, float):
             return val
@@ -62,6 +71,9 @@ class Real(ValSpec):
         return val
 
 class PosInt(ValSpec):
+    def __init__(self):
+        super().__init__("POSINT")
+
     def phits(self, val):
         if isinstance(val, int) and val > 0:
             return val
@@ -78,6 +90,8 @@ class PosInt(ValSpec):
 
 
 class PosReal(ValSpec):
+    def __init__(self):
+        super().__init__("NUMBER")
     def phits(self, val):
         if isinstance(val, float) and val > 0:
             return val
@@ -119,6 +133,8 @@ class PosReal(ValSpec):
 
 
 class NegDisable(ValSpec):
+    def __init__(self):
+        super().__init__("NUMBER")
     def phits(self, val):
         if isinstance(val, float) or isinstance(val, int) and val > 0:
             return val
@@ -138,6 +154,7 @@ class NegDisable(ValSpec):
 
 class Between(ValSpec):
     def __init__(self, start, stop):
+        super().__init__("INT")
         self.start = start
         self.stop = stop
 
@@ -157,6 +174,7 @@ class Between(ValSpec):
 
 class ZeroSpecial(ValSpec):
     def __init__(self, zero):
+        super().__init__("INT")
         self.zero = zero
 
     def phits(self, val):
@@ -178,6 +196,7 @@ class ZeroSpecial(ValSpec):
 
 class FinBij(ValSpec):
     def __init__(self, dic):
+        super().__init__("INT") # TODO: is this all that's needed?
         self.dic = dic
 
     def phits(self, val):
@@ -195,6 +214,7 @@ class FinBij(ValSpec):
 
 class IsA(ValSpec):
     def __init__(self, typ, index=False):
+        super.__init__(f"@parseof|{typ}|") # TODO: sus
         self.index = index
         assert type(typ) == type, "Pass class name, not instance, to IsA."
         assert issubclass(typ, PhitsObject), "IsA must be passed a PhitsObject."

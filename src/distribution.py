@@ -34,8 +34,13 @@ class TimeDistributionBins(PhitsObject):
     syntax = {"function": ("h(x)", Function(), 0),
               "n_bins": ("ll", Integer(), 1),
               "bounds": (("tg1", "tg2"), (Real(), Real()), 2),
-              "particle_production": ("o-type", Array, None)}
-    grammar = r'start: "t-type" "=" /3|4/ "\n" @assign_among|self.inv_syntax| ~ 4..5'
+              "particle_production": ("o-type", Array(1), None)}
+    grammar = r'''start: t3 | t4
+    t3: "t-type" "=" "3" "\n" @assign_among|self.inv_syntax| ~ 3
+    t4: "t-type" "=" "4" "\n" @assign_among|self.inv_syntax| ~ 3 @assign_then_grid|self.syntax["particle_production"]|
+    '''
+    def t4(self, tr):
+
 
 
 class TimeDistributionFunction(PhitsObject):
