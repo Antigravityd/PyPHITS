@@ -1,4 +1,4 @@
-from collections import namedtuple, Iterable
+from collections import Iterable
 import regex as re
 import dataclasses
 from lark import Lark, Transformer, Tree, Token
@@ -115,11 +115,11 @@ class PhitsObject(Transformer):
              "t-track", "t-cross", "t-point", "t-adjoint", "t-deposit", "t-deposit2", "t-heat", "t-yield", "t-product", "t-dpa",
              "t-let", "t-sed", "t-time", "t-interact", "t-dchain", "t-wwg", "t-wwbg", "t-volume", "t-gshow", "t-rshow","t-3dshow"}
     def __init__(self, *args,  **kwargs):
-        assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
+        # assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
 
         if len(args) == 0 and len(kwargs) == 0: # empty initialization, probably for transformer instance
             return
-        elif len(kwargs) == 0 and len(args) == 1 and args[0].isinstance(str): # initialization from a section of a PHITS .inp string
+        elif len(kwargs) == 0 and len(args) == 1 and isinstance(args[0], str): # initialization from a section of a PHITS .inp string
             for k, v in self.from_inp(args[0]).__dict__.items():
                 setattr(self, k, v)
         else:
@@ -134,7 +134,7 @@ class PhitsObject(Transformer):
 
             remaining = dict()
             for arg, val in kwargs.items():
-                if arg in syntax:
+                if arg in self.syntax:
                     setattr(self, arg, val)
                 else:
                     remaining[arg] = val
@@ -150,15 +150,7 @@ class PhitsObject(Transformer):
             if remaining:
                 self.parameters = Parameters(**remaining)
 
-        r = dict()
-        for py_ident, (phits_ident, default, valspec) in self.syntax.items():
-            if isinstance(phits_ident, tuple):
-                for i, phits_ident_real in enumerate(phits_ident):
-                    r[phits_ident_real] = (py_ident, default[i], valspec[i])
-            else:
-                r[phits_ident] = (py_ident, default, valspec)
 
-                self.inv_syntax = r
 
     # this method is a candidate for a move
     def idx(ob):
@@ -167,7 +159,17 @@ class PhitsObject(Transformer):
         else:
             return ob
 
+    @classmethod
+    def inv_syntax(self):
+        r = dict()
+        for py_ident, (phits_ident, valspec, argorder) in self.syntax.items():
+            if isinstance(phits_ident, tuple):
+                for i, phits_ident_real in enumerate(phits_ident):
+                    r[phits_ident_real] = (py_ident, valspec[i], argorder)
+            else:
+                r[phits_ident] = (py_ident, valspec, argorder)
 
+        return r
 
     @staticmethod
     def sanitize(phits_iden):
@@ -187,7 +189,7 @@ class PhitsObject(Transformer):
         Macros:
           @assign_among|<iterable>| -- when <iterable> is a subset of the inv_syntax() dictionary, match assignment statements in that subset.
           @parse_of|<PhitsObject>|  -- match any valid definition of the PhitsObject in question, according to its grammar."""
-        grammar = self.grammar
+        grammar = self._grammar
         def grammarmod(directive, replace, suffix=None):
             """Takes the grammar, finds all appearences of 'directive', calculates and performs textual replacement of the result of 'replace'
             (which is a fn syntax the result of the directive and match # to the substitution), and optionally appends the result of 'suffix'
@@ -197,23 +199,24 @@ class PhitsObject(Transformer):
             rules = []
             sub = []
             for i, match in enumerate(matches):
-                arg = eval(match[0][1:-1])
+                scope = locals()
+                arg = eval(match[0][1:-1], scope)
                 sub = replace(i, arg)
-                grammar = re.sub(f"@{directive}\\|(?:[^|]+|(?R))*+\\|", sub, grammar)
+                grammar = re.sub(f"@{directive}\\|(?:[^|]+|(?R))*+\\|", sub, grammar, count=1)
                 if suffix is not None:
                     grammar += suffix(i, arg)
 
 
 
         # @assign_among
-        def ass_repl(i, subset):
+        def ass_repl(i, keys):
             nonlocal self
+            inv = self.inv_mapping()
+            subset = {k: inv[k] if k in keys}
             sub = []
             for phits_iden, (py_iden, val_spec, arg_order) in subset.items():
                 san = self.sanitize(phits_iden)
-                other_idens = self.syntax[py_iden][0]
-                i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
-                sub.append(f"{san}{i}")
+                sub.append(san)
 
             return "(" + ' | '.join(sub) + ")"
 
@@ -223,8 +226,7 @@ class PhitsObject(Transformer):
             for phits_iden, (py_iden, val_spec, argorder) in subset.items():
                 san = self.sanitize(phits_iden)
                 other_idens = self.syntax[py_iden][0]
-                i = f"_{other_idens.index(phits_iden)}" if isinstance(other_idens, tuple) else ""
-                rules.append(f"{san}{i}: \"{phits_iden}\" \"=\" {val_spec.parse_rule}")
+                rules.append(f"{san}: \"{phits_iden}\" \"=\" {val_spec.parse_rule} \"\\n\"")
             return "\n".join(rules)
 
         grammarmod("assign_among", ass_repl, ass_suff)
@@ -235,35 +237,37 @@ class PhitsObject(Transformer):
             nonlocal self
             return self.sanitize(po.name) + "start"
 
+
         def parse_suff(i, po):
             nonlocal self
-            return re.sub("start:", self.sanitize(po.name) + "start:", po.grammar)
+            return re.sub("start:", self.sanitize(po.name) + "start:", po._grammar)
+
 
         grammarmod("parse_of", parse_repl, parse_suff)
 
         # @assign_then_grid
         def grid_repl(i, entr):
-            phits_iden = entr[0]
+            nonlocal self
+            phits_iden = self.inv_mapping()[entr
             sub = f"{self.sanitize(phits_iden)}"
             return "(" + sub + ")"
 
         def grid_suff(i, entr):
-            phits_iden = entr[0]
-            val_spec = entr[1]
+            nonlocal self
+            phits_iden = self.inv_mapping()[entr]
+            val_spec = self.inv_mapping()[entr]
             rule = f"""
-            {self.sanitize(phits_iden)}: \"{phits_iden}\" \"=\" \"{val_spec.parse_rule}\" "\n" numbergrid
+            {self.sanitize(phits_iden)}: "{phits_iden}" "=" {val_spec.parse_rule} "\\n" numbergrid?
             """
             return rule
 
         grammarmod("assign_then_grid", grid_repl, grid_suff)
 
 
-
-
-        return grammar
+        return grammar + PhitsObject.g_grammar
 
     def definition(self):
-        pars = Lark(self.grammar + PhitsObject.g_grammar, g_regex_flags=re.IGNORECASE, maybe_placeholders=False, ambiguity="resolve")
+        pars = Lark(self.grammar(), g_regex_flags=re.IGNORECASE, maybe_placeholders=False, ambiguity="resolve")
         return continue_lines(Reconstructor(pars).reconstruct(self.tree()))
 
     def section_title(self):
@@ -345,29 +349,36 @@ class PhitsObject(Transformer):
     def from_inp(self, segment):
         transformer = Transformer()
         transformer.parsing = self
-        for phits_ident, (py_ident, default, valspec) in self.inv_syntax().items():
-            scope = locals() | {"syntax": self.syntax, "py_ident": py_ident, "phits_ident": phits_ident, "valspec": valspec}
+        for phits_ident, (py_ident, valspec, argorder) in self.inv_syntax().items():
+            scope = locals() | {"syntax": self.syntax, "py_ident": py_ident, "phits_ident": phits_ident, "valspec": valspec,
+                                "multiple": isinstance(self.syntax[py_ident][0], tuple)}
 
             # this eval hack is motivated by a local function definition simply...not working---the function got overwritten each iteration
             san = self.sanitize(phits_ident)
             exec(f"""def {san}(s, tr):
-    if isinstance(phits_ident, tuple):
-        return (py_ident, dict(syntax[py_ident][0].index(phits_ident), valspec.python(tr[0])))
+    if multiple:
+        return (py_ident, valspec.python(tr[0]), syntax[py_ident][0].index(phits_ident))
     else:
         return (py_ident, valspec.python(tr[0]))""", scope)
 
             setattr(transformer, san, scope[san].__get__(transformer))
 
+
         def start(s, tr):
+            if isinstance(tr[0], list):
+                tr = tr[0]
             divided = dict()
-            for py_ident, val in tr:
-                if isinstance(val, dict):
+            for tup in tr:
+                py_ident = tup[0]
+                py_val = tup[1]
+                if len(tup) == 3:
+                    argindex = tup[2]
                     if py_ident in divided:
-                        divided[py_ident] |= val
+                        divided[py_ident] |= {argindex: py_val}
                     else:
-                        divided[py_ident] = val
+                        divided[py_ident] = {argindex: py_val}
                 else:
-                    divided[py_ident] = val
+                    divided[py_ident] = py_val
 
             for k, v in divided.items():
                 if isinstance(v, dict):
@@ -379,12 +390,12 @@ class PhitsObject(Transformer):
 
         # Any methods in subclass not escaped with an underscore are added to transformer
         for attr in set(dir(self)) - set(dir(PhitsObject)):
-            if callable(attr) and attr[0] != "_":
-                setattr(transformer, attr, dir(self)[attr].__get__(transformer))
+            if callable(getattr(self, attr)) and attr[0] != "_":
+                setattr(transformer, attr, getattr(self, attr).__get__(transformer))
 
         transformer = PhitsObject() * transformer
 
-        grammar = Lark(self.grammar() + PhitsObject.g_grammar, g_regex_flags=re.IGNORECASE)
+        grammar = Lark(self.grammar(), g_regex_flags=re.IGNORECASE)
         tree = grammar.parse(segment)
         return transformer.transform(tree)
 
@@ -407,7 +418,7 @@ class PhitsObject(Transformer):
 
 
 
-class Parameters(PhitsObject, Transformer):
+class Parameters(PhitsObject):
     """A "dictionary with an attitude" representing an entry in the [Parameters] section of an input file.
     Any extra keyword arguments to any constructors are minted into parameter objects.
 
@@ -428,7 +439,7 @@ class Parameters(PhitsObject, Transformer):
                "max_batches": ("maxbch", PosInt(), None),
                "nuclear_memory_rescale": ("xsmemory", 1.0, PosReal(), None),
                "timeout": ("timeout", NegDisable(), None),
-               "stdev_control": ("istdev", FinBij({-2:"history_restart", -1:"batch_restart", 0:"normal", 1:"batch", 2:"history"}, None)),
+               "stdev_control": ("istdev", FinBij({-2: "history_restart", -1: "batch_restart", 0: "normal", 1: "batch", 2: "history"}), None),
                "share_tallies": ("italsh", Choice10(), None),
                "check_consistency": ("ireschk", Choice10(c_style=True), None),
                "xor_prng": ("nrandgen", Choice10(), None),
@@ -504,14 +515,14 @@ class Parameters(PhitsObject, Transformer):
 
 
     # grammar/transformer stuff
-    grammar = r"""
+    _grammar = r"""
     %ignore SPACE
     start: assignment+
-    assignment: @assign_among|self.inv_syntax|
+    assignment: @assign_among|self.inv_syntax().keys()|
     """
 
     def assignment(self, tr):
-        return (self.inv_syntax[tr[0]][0], self.inv_syntax[tr[0]][2].python(tr[1]))
+        return (self.inv_syntax()[tr[0]][0], self.inv_syntax()[tr[0]][2].python(tr[1]))
 
     def start(self, tr):
         return Parameters(**dict(tr))

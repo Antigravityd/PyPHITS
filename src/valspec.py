@@ -13,8 +13,8 @@ class ValSpec():
         elif not isinstance(self, OneOf) and isinstance(other, OneOf):
             other.choices.append(self)
             return other
-        elif not isinstance(self, OneOf) and not isinstance(other, OneOf)
-        return OneOf(self, other)
+        elif not isinstance(self, OneOf) and not isinstance(other, OneOf):
+            return OneOf(self, other)
 
 
 class Choice10(ValSpec):
@@ -27,16 +27,16 @@ class Choice10(ValSpec):
     def phits(self, val):
         if val == self.true:
             return 0 if self.c_style else 1
-        elif val == false:
-            return 1 if c_style else 0
+        elif val == self.false:
+            return 1 if self.c_style else 0
         else:
             return lambda var: ValueError(f"`{var}` must be either True or False; got {val}.")
 
     def python(self, val):
         if val == 0:
-                return true if c_style else false
+                return self.true if self.c_style else self.false
         elif val == 1:
-            return false if c_style else true
+            return self.false if self.c_style else self.true
         else:
             return lambda var: ValueError(f"`{self.ident_map[var]}` must be either 0 or 1; got {val}.")
 
@@ -52,7 +52,7 @@ class Integer(ValSpec):
             return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
 
     def python(self, val):
-        if x % 1 == 0:
+        if val % 1 == 0:
             return val
         else:
             return lambda var: ValueError(f"`{self.ident_map[var]}` must be an integer; got {val}.")
@@ -237,6 +237,33 @@ class IsA(ValSpec):
                 return val
             else:
                 return lambda var: ValueError(f"`{var}` must be an object of type {typ}; got {val}.")
+
+class Function(ValSpec):
+    def __init__(self):
+        super().__init__("computation")
+
+
+    def phits(self, val):
+        if isinstance(val, str):
+            return val
+
+    def python(self, val):
+        if callable(val):
+            return val
+
+
+class Array(ValSpec):
+    def __init__(self, rows):
+        super().__init__("POSINT")
+        self.rows = rows
+
+    def phits(self, val):
+        assert len(val) == self.rows, "Wrong number of lines in Array() object"
+        return val
+
+    def python(self, val):
+        assert len(val) == self.rows, "Wrong number of lines in Array() object"
+        return val
 
 
 class OneOf(ValSpec):
