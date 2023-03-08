@@ -13,12 +13,11 @@ class Rectangle(PhitsObject):
     '''
 
     def tree(self):
-        tree = [Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tw"), [Token("computation", self.width)])]),
+        tree = [Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tw"), [Tree(Token("RULE", "computation"), [self.width])])]),
                 Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tn"), [Token("POSINT", self.number)])]),
-                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "td"), [Token("computation", self.delta)])])]
-        if self.center is not None:
-            tree.append(Tree(Token("RULE", "normal"), [Tree(Token("RULE", "t0")), [Token("computation", self.center)]]))
-
+                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "td"), [Tree(Token("RULE", "computation"), [self.delta])])])]
+        if self.particle_production is not None:
+            tree.append(Tree(Token("RULE", "normal"), [Tree(Token("RULE", "t0")), [Tree(Token("RULE", "computation"), [self.center])]]))
         return Tree(Token("RULE", "start"), tree)
 
 
@@ -38,13 +37,14 @@ class Gaussian(PhitsObject):
         return tr[0]
 
     def tree(self):
-        tree = [Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tw"), [Token("computation", self.fwhm)])]),
+        tree = [Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tw"), [Tree(Token("RULE", "computation"), [self.width])])]),
                 Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tn"), [Token("POSINT", self.number)])]),
-                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "td"), [Token("computation", self.delta)])])]
-        if self.center is not None:
-            tree.append(Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tc")), [Token("computation", self.cutoff)]]))
-
+                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "td"), [Tree(Token("RULE", "computation"), [self.delta])])])]
+        if self.particle_production is not None:
+            tree.append(Tree(Token("RULE", "normal"), [Tree(Token("RULE", "t0")), [Tree(Token("RULE", "computation"), [self.center])]]))
         return Tree(Token("RULE", "start"), tree)
+
+
 
 class TimeDistributionBins(PhitsObject):
     name = "timedistbins"
@@ -53,8 +53,8 @@ class TimeDistributionBins(PhitsObject):
 
     _grammar = r'''start: t3 | t4
     t3: "t-type" "=" "3" "\n" normal
-    t4: "t-type" "=" "4" "\n" normal @assign_then_grid|"particle_production"|
-    normal: @assign_then_grid|"bins"|
+    t4: "t-type" "=" "4" "\n" normal @assign_then_grid|"o-type"|
+    normal: @assign_then_grid|"ntt"|
     %ignore SPACE
     '''
 
@@ -77,11 +77,22 @@ class TimeDistributionBins(PhitsObject):
         return list(tr)
 
     def tree(self):
-        tree = [Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tw"), [Token("computation", self.width)])]),
-                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "tn"), [Token("POSINT", self.number)])]),
-                Tree(Token("RULE", "normal"), [Tree(Token("RULE", "td"), [Token("computation", self.delta)])])]
+        tree = []
+        grid = []
+        for i in self.bins:
+            sub = []
+            for j in i:
+                sub.append(Tree(Token("RULE", "computation"), [j]))
+
+            grid.append(Tree(Token("RULE", "numberline"), sub))
+
+        tree.append(Tree(Token("RULE", "ntt"), [Token("INT", len(self.bins[0])), Tree(Token("RULE", "numbergrid"), grid)]))
         if self.particle_production is not None:
-            tree.append(Tree(Token("RULE", "normal"), [Tree(Token("RULE", "t0")), [Token("computation", self.center)]]))
+            tree.append(Tree(Token("RULE", "o_type"),
+                             [Token("INT", len(self.particle_production)),
+                              Tree(Token("RULE", "numbergrid"),
+                                   [Tree(Token("RULE", "numberline"),
+                                         [Tree(Token("RULE", "computation"), [i]) for i in self.particle_production])])]))
 
         return Tree(Token("RULE", "start"), tree)
 
@@ -99,7 +110,7 @@ class TimeDistributionFunction(PhitsObject):
 
     _grammar = r'''start: t5 | t6
     t5: "t-type" "=" "5" "\n" normal ~ 4
-    t6: "t-type" "=" "6" "\n" normal ~ 4 @assign_then_grid|"particle_production"|?
+    t6: "t-type" "=" "6" "\n" normal ~ 4 @assign_then_grid|"o-type"|?
     normal: @assign_among|set(self.inv_syntax()) - {"o-type"}|
     %ignore SPACE
     '''
@@ -187,7 +198,7 @@ class AngleDistributionFunction(PhitsObject):
 
     _grammar = r'''start: t5 | t6
     t5: "t-type" "=" "5" "\n" normal ~ 4
-    t6: "t-type" "=" "6" "\n" normal ~ 4 @assign_then_grid|self.syntax["particle_production"]|
+    t6: "t-type" "=" "6" "\n" normal ~ 4 @assign_then_grid|"o-type"]|
     normal: @assign_among|{k: self.inv_syntax()[k] for k in set(self.inv_syntax()) - {"o-type"}}|
     %ignore SPACE
     '''

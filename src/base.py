@@ -211,8 +211,8 @@ class PhitsObject(Transformer):
         # @assign_among
         def ass_repl(i, keys):
             nonlocal self
-            inv = self.inv_mapping()
-            subset = {k: inv[k] if k in keys}
+            inv = self.inv_syntax()
+            subset = {k: inv[k] for k in keys}
             sub = []
             for phits_iden, (py_iden, val_spec, arg_order) in subset.items():
                 san = self.sanitize(phits_iden)
@@ -248,14 +248,13 @@ class PhitsObject(Transformer):
         # @assign_then_grid
         def grid_repl(i, entr):
             nonlocal self
-            phits_iden = self.inv_mapping()[entr
-            sub = f"{self.sanitize(phits_iden)}"
+            sub = f"{self.sanitize(entr)}"
             return "(" + sub + ")"
 
         def grid_suff(i, entr):
             nonlocal self
-            phits_iden = self.inv_mapping()[entr]
-            val_spec = self.inv_mapping()[entr]
+            phits_iden = entr
+            val_spec = self.inv_syntax()[entr][1]
             rule = f"""
             {self.sanitize(phits_iden)}: "{phits_iden}" "=" {val_spec.parse_rule} "\\n" numbergrid?
             """
