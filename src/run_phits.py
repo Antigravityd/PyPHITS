@@ -297,23 +297,12 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
 
 
-
-class TempWorkingDir(): # this is probably all kinds of racy and unsafe, but eh
-    def __init__(self, name):
-        self.name = name
-    def __enter__(self):
-        self.directory = os.mkdir(self.name)
-        os.chdir(self.name)
-    def __exit__(self, a, b, c):
-        os.chdir("..")
-        sh.rmtree(self.name)
-
 def run_phits(sources, cells, tallies, command="phits", error_stop=True, filename="phits.inp", return_type="dict", **kwargs):
     # TODO: consider how to read stdout/output files into returnable formats
     # WARNING: setting the command variable opens up shell injection attacks, as sp.run() with
     # shell=True is done unfiltered. Should see about using shlex.quote() to sanitize, since title may be specified by the user
 
-    with TempWorkingDir("temp_PHITS") as newdir:
+    with tf.TemporaryDirectory() as newdir:
         inp = make_input(sources, cells, tallies, **kwargs)
         with open(f"{filename}", "w") as inp_file:
             inp_file.write(inp)
@@ -335,8 +324,8 @@ def run_phits(sources, cells, tallies, command="phits", error_stop=True, filenam
                 print(r)
 
 
-        # for t in tallies:
-        #     if
+        for t in tallies:
+            if
 
         return result
 
