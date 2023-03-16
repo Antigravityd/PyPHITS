@@ -1,7 +1,8 @@
+from functools import partial
+
+# TODO: think about if the python() methods are necessary
 
 class ValSpec():
-    def __init__(self, parse_rule):
-        self.parse_rule = parse_rule
     def __or__(self, other):
         # TODO: think about if copying is necessary
         if isinstance(self, OneOf) and isinstance(other, OneOf):
@@ -19,7 +20,6 @@ class ValSpec():
 
 class Choice10(ValSpec):
     def __init__(self, c_style=False, true=True, false=False):
-        super().__init__("INT")
         self.c_style = c_style
         self.true = true
         self.false = false
@@ -30,7 +30,7 @@ class Choice10(ValSpec):
         elif val == self.false:
             return 1 if self.c_style else 0
         else:
-            return lambda var: ValueError(f"`{var}` must be either True or False; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be either True or False; got {va}."), val)
 
     def python(self, val):
         if val == 0:
@@ -38,94 +38,60 @@ class Choice10(ValSpec):
         elif val == 1:
             return self.false if self.c_style else self.true
         else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be either 0 or 1; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be either 0 or 1; got {va}."), val)
 
 
 class Integer(ValSpec):
-    def __init__(self):
-        super().__init__("INT")
-
     def phits(self, val):
         if isinstance(val, int):
             return val
         else:
-            return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be an integer; got {va}."), val)
 
     def python(self, val):
         if val % 1 == 0:
             return val
         else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be an integer; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be an integer; got {va}."), val)
 
 class Real(ValSpec):
-    def __init__(self):
-        super().__init__("NUMBER")
-
     def phits(self, val):
         if isinstance(val, float):
             return val
         else:
-            return lambda var: ValueError(f"`{var}` must be a float; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be a float; got {va}."), val)
 
     def python(self, val):
         return val
 
 class PosInt(ValSpec):
-    def __init__(self):
-        super().__init__("POSINT")
-
     def phits(self, val):
         if isinstance(val, int) and val > 0:
             return val
         else:
-            return lambda var: ValueError(f"`{var}` must be a positive integer; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be a positive integer; got {va}."), val)
 
     def python(self, val):
         if val > 0:
             return val
         else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be positive; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be positive; got {va}."), val)
 
 
 
 
 class PosReal(ValSpec):
-    def __init__(self):
-        super().__init__("NUMBER")
     def phits(self, val):
         if isinstance(val, float) and val > 0:
             return val
         else:
-            lambda var: ValueError(f"`{var}` must be a positive floating-point value; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be a positive float; got {va}."), val)
 
     def python(self, val):
         if val > 0:
             return val
         else:
-            lambda var: ValueError(f"`{self.ident_map[var]}` must be positive; got {val}.")
-
-
-
-
-# incorrect
-# class TripleChoice():
-#     parse_rule = "INT"
-
-#     def produce(self):
-#         return tokmap("INT")
-
-#     def phits(self):
-#         if isinstance(val, int):
-#             return True if val > 0 else False
-#         else:
-#             return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
-
-#     def python(self):
-#         if val > 0:
-#             return True
-#         else:
-#             return False
-
+            return partial(lambda va, var: ValueError(f"`{var}` must be positive; got {va}."), val)
 
 
 
@@ -133,16 +99,13 @@ class PosReal(ValSpec):
 
 
 class NegDisable(ValSpec):
-    def __init__(self):
-        super().__init__("NUMBER")
     def phits(self, val):
         if isinstance(val, float) or isinstance(val, int) and val > 0:
             return val
         elif val is None:
             return -1.0
         else:
-            # TODO: think about how to make this work
-            return lambda s, var: ValueError(f"`{s.ident_map[var]}` must be a positive integer or None; got {val}.")
+            return partial(lambda va, var: ValueError(f"`{var}` must be a positive integer or None; got {va}."), val)
 
     def python(self, val):
         if val > 0:
@@ -154,7 +117,6 @@ class NegDisable(ValSpec):
 
 class Between(ValSpec):
     def __init__(self, start, stop):
-        super().__init__("INT")
         self.start = start
         self.stop = stop
 
@@ -162,33 +124,36 @@ class Between(ValSpec):
         if isinstance(val, int) and val >= self.start and val <= self.stop:
             return val
         else:
-            return lambda var: ValueError(f"`{var}` must be an integer between {self.start} and {self.stop}, inclusive; got {val}.")
+            return partial(lambda va, start, stop, var: ValueError(f"`{var}` must be an integer between {start} and {stop}; got {va}."),
+                           val, self.start, self.stop)
+
 
     def python(self, val):
         if val >= self.start and val <= self.stop:
             return val
         else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be between {self.start} and {self.stop}, inclusive; got {val}.")
+            return partial(lambda va, start, stop, var: ValueError(f"`{var}` must be an integer between {start} and {stop}; got {va}."),
+                           val, self.start, self.stop)
+
 
 
 
 class ZeroSpecial(ValSpec):
     def __init__(self, zero):
-        super().__init__("INT")
         self.zero = zero
 
     def phits(self, val):
         if isinstance(val, int):
-            if val == 0:
-                return self.zero
+            if val == self.zero:
+                return 0
             else:
                 return val
         else:
-            return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
+            return partial(lambda va, zero, var: ValueError(f"`{var}` must be a positive integer or {zero}; got {va}."), val, self.zero)
 
     def python(self, val):
-        if val == zero:
-            return 0
+        if val == 0:
+            return self.zero
         else:
             return val
 
@@ -196,74 +161,23 @@ class ZeroSpecial(ValSpec):
 
 class FinBij(ValSpec):
     def __init__(self, dic):
-        super().__init__("INT") # TODO: is this all that's needed?
         self.dic = dic
 
     def phits(self, val):
         if val in self.dic:
             return self.dic[val]
         else:
-            return lambda var: ValueError(f"`{var}` must be one of {list(dic.keys())}; got {val}.")
+            return partial(lambda va, keys, var: ValueError(f"`{var}` must be one of {keys}; got {va}."), val, list(self.dic.keys()))
+
 
     def python(self, val):
         rev = {v: k for k, v in self.dic.items()}
         if val in rev:
             return rev[val]
         else:
-            return lambda var: ValueError(f"`{self.ident_map[var]}` must be one of {list(rev.keys())}; got {val}.")
-
-class IsA(ValSpec):
-    def __init__(self, typ, index=False):
-        super.__init__(f"@parseof|{typ}|") # TODO: sus
-        self.index = index
-        assert type(typ) == type, "Pass class name, not instance, to IsA."
-        assert issubclass(typ, PhitsObject), "IsA must be passed a PhitsObject."
-        self.typ = typ
-
-    def phits(self, val):
-        if self.index:
-            return val.index
-        else:
-            return val.definition()
-
-    def python(self, val):
-        if self.index:
-            if isinstance(val, int):
-                return val
-            else:
-                return lambda var: ValueError(f"`{var}` must be an integer; got {val}.")
-        else:
-            if isinstance(val, typ):
-                return val
-            else:
-                return lambda var: ValueError(f"`{var}` must be an object of type {typ}; got {val}.")
-
-class Function(ValSpec):
-    def __init__(self):
-        super().__init__("computation")
+            return partial(lambda va, keys, var: ValueError(f"`{var}` must be one of {keys}; got {va}."), list(rev.keys()))
 
 
-    def phits(self, val):
-        if isinstance(val, str):
-            return val
-
-    def python(self, val):
-        if callable(val):
-            return val
-
-
-class Array(ValSpec):
-    def __init__(self, rows):
-        super().__init__("POSINT")
-        self.rows = rows
-
-    def phits(self, val):
-        assert len(val) == self.rows, "Wrong number of lines in Array() object"
-        return val
-
-    def python(self, val):
-        assert len(val) == self.rows, "Wrong number of lines in Array() object"
-        return val
 
 
 class OneOf(ValSpec):

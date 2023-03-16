@@ -1,3 +1,9 @@
+import unittest
+from unittest import TestCase
+
+
+class TestParameters(TestCase):
+    def test_mapping()
 parameters = Parameters(icntl=7)
 sources = [Cylindrical("neutron", 2.2),
            Rectangular("neutron", 12),
@@ -25,3 +31,7 @@ delta_ray = []
 track_structure = []
 importance = []
 wi
+
+
+if __name__ == '__main__':
+    unittest.main()
