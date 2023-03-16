@@ -1,4 +1,4 @@
-from collections import namedtuple, Iterable
+from valspec import *
 
 def continue_lines(inp):        # Continue lines that are too long
     r = ""
@@ -18,6 +18,27 @@ def continue_lines(inp):        # Continue lines that are too long
 
     return r
 
+# Configuration options
+g_value_type = "Python"
+def settings(value_type="Python"):
+    """Configure module-level parameters.
+
+    Options:
+      - value_type = "Python" | "PHITS"
+        If "Python", use a remapped syntax that's more informative. E.g., `Parameters(control="output_echo_only")`
+        instead of `Parameters(icntl=3)`.
+
+        If "PHITS", use a syntax identical to that specified in the manual (i.e., the latter form in the above example).
+        Note that some identifiers in PHITS do not conform to Python's identifier syntax (e.g. 2d-type, emin(14));
+        these identifiers are sanitized as follows:
+           - dashes -> underscores
+           - beginning with a number -> that clause moved to the end
+           - parentheses -> omitted
+
+        For the examples above, the sanitized identifiers would be type_2d and emin14.
+    """
+    global g_value_type
+    g_value_type = new_value_type
 
 
 class PhitsObject:
@@ -26,14 +47,14 @@ class PhitsObject:
 
     PhitsObject values correspond to some section of an input file.
     As such, they have a .definition() method that returns a textual representation of the value to be inserted into the input file:
-    >>> print( Cylindrical("241Am", 2.2, fissile="neutrons", bounds=(-0.25, 0.25), r_out=0.3).definition() )
+    >>> print(Cylindrical("241Am", 2.2, fissile="neutrons", bounds=(-0.25, 0.25), r_out=0.3).definition())
 
-    They also have a .prelude() method that returns the line that is to preceed the whole set of values of that type:
+    They also have a .prelude_str() method that returns text that is to preceed the whole set of values of that type:
     >>> print()
 
     Last, there's a .section_title() method that gives the name of the section into which the objects definition will be placed:
     >>> print()
-
+n
     The PhitsObject class is also a factory for subtypes.
     As an example of how subtypes should be defined:
     >>> class Cylindrical(PhitsObject):
@@ -114,41 +135,69 @@ class PhitsObject:
     def __init__(self, *args,  **kwargs):
         assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
 
-        if len(args) == len(self.positional):
-            for idx, arg in enumerate(args):
-                setattr(self, self.positional[idx], arg if not isinstance(arg, list) else tuple(arg))
-        else:
-            raise TypeError(f"Wrong number of positional arguments specified in the definition of {self.name} object.")
+        if hasattr(self, syntax): # new-style definition, with high-resolution mapping
+            required = list(map(lambda tup: tup[0],
+                                sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
+            assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
+            for idx, iden in enumerate(args):
+                setattr(self, required[idx], arg if not isinstance(arg, list) else tuple(arg))
 
-        for arg in self.required:
-            if arg not in self.positional:
+            for arg in self.syntax:
                 if arg in kwargs:
-                    setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
-                else:
-                    raise TypeError(f"Missing required argument in the definition of {self.name} object.")
-
-        for arg in self.optional:
-            if arg in kwargs:
-                setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
-            else:
-                if arg in self.nones:
-                    setattr(self, arg, self.nones[arg])
+                    setattr(self, arg, kwargs[arg] if not isinstance(arg, list) else tuple(arg))
                 else:
                     setattr(self, arg, None)
 
+            # TODO: reconsider
+            for attr in self.subobjects:
+                child = getattr(self, attr)
+                if hasattr(child, self.name):
+                    val = getattr(child, self.name)
+                    if val is None:
+                        setattr(child, self.name, self)
 
-        for attr in self.subobjects:
-            child = getattr(self, attr)
-            if hasattr(child, self.name):
-                val = getattr(child, self.name)
-                if val is None:
-                    setattr(child, self.name, self)
+            remaining = {k: v for k, v in kwargs.items() if k not in self.syntax}
+            if remaining:
+                self.parameters = Parameters(**remaining)
+
+        else: # Old-style definition, with "required" and "optional" lists, separate mappings, no value reassignment, etc.
+              # Should be removed eventually.
+
+            if len(args) == len(self.positional):
+                for idx, arg in enumerate(args):
+                    setattr(self, self.positional[idx], arg if not isinstance(arg, list) else tuple(arg))
+            else:
+                raise TypeError(f"Wrong number of positional arguments specified in the definition of {self.name} object.")
+
+            for arg in self.required:
+                if arg not in self.positional:
+                    if arg in kwargs:
+                        setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
+                    else:
+                        raise TypeError(f"Missing required argument in the definition of {self.name} object.")
+
+            for arg in self.optional:
+                if arg in kwargs:
+                    setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
+                else:
+                    if arg in self.nones:
+                        setattr(self, arg, self.nones[arg])
+                    else:
+                        setattr(self, arg, None)
+
+            # TODO: reconsider
+            for attr in self.subobjects:
+                child = getattr(self, attr)
+                if hasattr(child, self.name):
+                    val = getattr(child, self.name)
+                    if val is None:
+                        setattr(child, self.name, self)
 
 
 
-        remaining = {k: v for k, v in kwargs.items() if k not in self.required and k not in self.optional}
-        if remaining:
-            self.parameters = Parameters(**remaining)
+            remaining = {k: v for k, v in kwargs.items() if k not in self.required and k not in self.optional}
+            if remaining:
+                self.parameters = Parameters(**remaining)
 
 
 
@@ -265,14 +314,79 @@ class Parameters(PhitsObject):
     dbcutoff = 3.3
 
     """
+        syntax = {"control": ("icntl",
+                           FinBij({"normal": 0, "output_cross-section": 1, "output_echo_only": 3, "all_reg_void": 5,
+                                   "source_check": 6, "show_geometry": 7, "show_geometry_with_xyz": 8, "show_regions": 9,
+                                   "show_regions_with_tally": 10, "show_3d_geometry": 11, "use_dumpall": 12, "sum_tally": 13,
+                                   "auto_volume": 14, "ww_bias_tally": 15, "analysis_script": 16, "anatally": 17}), None),
+               "max_histories": ("maxcas", PosInt(), None),
+               "max_batches": ("maxbch", PosInt(), None),
+               "nuclear_memory_rescale": ("xsmemory", 1.0, PosReal(), None),
+               "timeout": ("timeout", NegDisable(), None),
+               "stdev_control": ("istdev", FinBij({-2: "history_restart", -1: "batch_restart", 0: "normal", 1: "batch", 2: "history"}), None),
+               "share_tallies": ("italsh", Choice10(), None),
+               "check_consistency": ("ireschk", Choice10(c_style=True), None),
+               "xor_prng": ("nrandgen", Choice10(), None),
+               "seed_skip": ("irskeep", Integer(), None),
+               "random_seed": ("rseed", Real(), None),
+               "seed_from_time": ("itimrand", Choice10(), None),
+               # bitrseed?,
+               "proton_e_cutoff": ("emin(1)", PosReal(), None),
+               "neutron_e_cutoff": ("emin(2)", PosReal(), None),
+               "pionp_e_cutoff": ("emin(3)", PosReal(), None),
+               "pion0_e_cutoff": ("emin(4)", PosReal(), None),
+               "pionm_e_cutoff": ("emin(5)", PosReal(), None),
+               "muonp_e_cutoff": ("emin(6)", PosReal(), None),
+               "muonm_e_cutoff": ("emin(7)", PosReal(), None),
+               "kaonp_e_cutoff": ("emin(8)", PosReal(), None),
+               "kaon0_e_cutoff": ("emin(9)", PosReal(), None),
+               "kaonm_e_cutoff": ("emin(10)", PosReal(), None),
+               "other_e_cutoff": ("emin(11)", PosReal(), None),
+               "electron_e_cutoff": ("emin(12)", PosReal(), None),
+               "positron_e_cutoff": ("emin(13)", PosReal(), None),
+               "photon_e_cutoff": ("emin(14)", PosReal(), None),
+               "deuteron_e_cutoff": ("emin(15)", PosReal(), None),
+               "triton_e_cutoff": ("emin(16)", PosReal(), None),
+               "he3_e_cutoff": ("emin(17)", PosReal(), None),
+               "he4_e_cutoff": ("emin(18)", PosReal(), None),
+               "nucleon_e_cutoff": ("emin(19)", PosReal(), None),
+               "proton_e_max": ("dmax(1)", PosReal(), None),
+               "neutron_e_max": ("dmax(2)", PosReal(), None),
+               "electron_e_max": ("dmax(12)", PosReal(), None),
+               "positron_e_max": ("dmax(13)", PosReal(), None),
+               "photon_e_max": ("dmax(14)", PosReal(), None),
+               "deuteron_e_max": ("dmax(15)", PosReal(), None),
+               "he4_e_max": ("dmax(18)", PosReal(), None),
+               "photonuclear_e_max": ("dpnmax", PosReal(), None),
+               # lib(i)
+               "charged_e_min": ("esmin", PosReal(), None),
+               "charged_e_max": ("esmax", PosReal(), None),
+               # cmin
+                "electron_positron_track_structure_e_min": ("etsmin", PosReal(), None),
+               "electron_positron_track_structure_e_max": ("etsmax", PosReal(), None),
+               "nucleon_track_structure_e_max": ("tsmax", PosReal(), None),
+               "electric_transport_type": ("negs", FinBij({"PHITS": -1, "ignore": 0, "EGS5": 1}), None),
+               "automatic_e_bounds": ("nucdata", Choice10(), None),
+               "electron_positron_adjust_weight_over_e_max": ("ieleh", Choice10(), None),
+               "nucleon_nucleus_model_switch_e": ("ejamnu", PosReal(), None),
+               "pion_nucleus_model_switch_e": ("ejampi", PosReal(), None),
+               "isobar_max_e": ("eisobar", PosReal(), None),
+               "isobar_model": ("isobar", Choice10(), None),
+               # etc.
+                }
     def __init__(self, **kwargs):
         self.name = "parameters"
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
+            assert k in self.syntax, f"Unrecognized parameter {k} (with value {v}) in initialization of Parameters object.
+            Check that the correct parameters were passed to other objects."
             setattr(self, k, v)
+
     def __getitem__(self, key):
         return self.__dict__[key]
+
     def empty(self):
         return True if self.__dict__ == {"name": "parameters"} else False
+
     def definition(self):
         inp = ""
         for var, val in  self.__dict__.items():
@@ -281,28 +395,3 @@ class Parameters(PhitsObject):
 
         return inp
 
-# I want to get rid of this
-class Mesh():
-    """Represents all list-typed data in PHITS."""
-    def __init__(self, axis, bins=None): # All bin generation is easily done in Python via list comprehensions
-        assert axis in ["energy", "time", "x", "y", "z", "radius", "angle", "let"], f"Unrecognized axis {axis} in mesh definition."
-        self.axis = axis
-        self.bins = tuple(bins)
-        print(self.bins)
-        if axis != "angle":
-            self.type = 2
-        else:
-            pass  # TODO: figure out angle mesh
-
-
-    def __eq__(self, other):
-        if type(self) != type(other):
-            return False
-
-        else:
-            return {k: v for k, v in self.__dict__.items() if v is not other} \
-                == {k: v for k, v in other.__dict__.items() if v is not self}
-
-    def __hash__(self):
-        return hash(tuple(v for k, v in sorted(self.__dict__.items()) \
-                          if (self not in v.__dict__.values() if hasattr(v, "__dict__") else True)))
