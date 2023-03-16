@@ -1,8 +1,8 @@
 #!/bin/sh
 
-phits_MPI="/home/dnw/phits327A/phits/bin2/phits_LinGfort_MPI"
-phits_OMP="/home/dnw/phits327A/phits/bin2/phits_LinGfort_OMP"
-phits_single="/home/dnw/phits327A/phits/bin2/phits_LinGfort"
+phits_MPI="/home/dnw/phits326A/phits/bin/phits_LinGfort_MPI"
+phits_OMP="/home/dnw/phits326A/phits/bin/phits_LinGfort_OMP"
+phits_single="/home/dnw/phits326A/phits/bin/phits_LinGfort"
 mpi_command="mpirun"
 
 

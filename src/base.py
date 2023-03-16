@@ -1,4 +1,5 @@
 from valspec import *
+import re
 
 def continue_lines(inp):        # Continue lines that are too long
     r = ""
@@ -17,6 +18,7 @@ def continue_lines(inp):        # Continue lines that are too long
             length = 0
 
     return r
+
 
 # Configuration options
 g_value_type = "Python"
@@ -202,6 +204,10 @@ n
 
 
     def add_definition(self, how, to, assignments=True):
+        """Helper function to handle shape and prelude skeletons."""
+        if callable(how):
+            how = how(self)
+
         def idx(ob):
             if isinstance(ob, PhitsObject):
                 return str(ob.index)
@@ -275,20 +281,36 @@ n
         return to
 
     def prelude_str(self):
+        """Return a string to appear before all instances of a type of PhitsObject."""
         inp = self.add_definition(self.prelude, "")
 
         return continue_lines(inp)
 
     def definition(self):
+        """Return the string representing the particular PhitsObject."""
         inp = self.add_definition(self.shape, "")
 
         return continue_lines(inp)
 
     def section_title(self):
+        """Return the section title under which a PhitsObject belongs."""
         sec_name = self.name.replace("_", " ").title()
         return f"[{sec_name}]\n"
 
 
+    def sanitize(self, iden):
+        """Make a PHITS identifier Python-acceptable.
+
+        See the documentation for settings().
+        """
+        r = iden.replace("-", "_")
+        r = r.replace("(", "")
+        r = r.replace(")", "")
+        if r[0].isdigit():
+            if m := re.match(".*?_", r):
+                r = r[m.end():] + "_" + r[:m.end() - 1]
+
+        return r
 
 
     def __eq__(self, other):
@@ -304,94 +326,4 @@ n
                           if (self not in v.__dict__.values() if hasattr(v, "__dict__") else True) and k not in self.no_hash))
 
 
-class Parameters(PhitsObject):
-    """A "dictionary with an attitude" representing an entry in the [Parameters] section of an input file.
-    Any extra keyword arguments to any constructors are minted into parameter objects.
-
-
-    >>> print(Parameters(ndedx=2, dbcutoff=3.3).definition())
-    ndedx = 2
-    dbcutoff = 3.3
-
-    """
-        syntax = {"control": ("icntl",
-                           FinBij({"normal": 0, "output_cross-section": 1, "output_echo_only": 3, "all_reg_void": 5,
-                                   "source_check": 6, "show_geometry": 7, "show_geometry_with_xyz": 8, "show_regions": 9,
-                                   "show_regions_with_tally": 10, "show_3d_geometry": 11, "use_dumpall": 12, "sum_tally": 13,
-                                   "auto_volume": 14, "ww_bias_tally": 15, "analysis_script": 16, "anatally": 17}), None),
-               "max_histories": ("maxcas", PosInt(), None),
-               "max_batches": ("maxbch", PosInt(), None),
-               "nuclear_memory_rescale": ("xsmemory", 1.0, PosReal(), None),
-               "timeout": ("timeout", NegDisable(), None),
-               "stdev_control": ("istdev", FinBij({-2: "history_restart", -1: "batch_restart", 0: "normal", 1: "batch", 2: "history"}), None),
-               "share_tallies": ("italsh", Choice10(), None),
-               "check_consistency": ("ireschk", Choice10(c_style=True), None),
-               "xor_prng": ("nrandgen", Choice10(), None),
-               "seed_skip": ("irskeep", Integer(), None),
-               "random_seed": ("rseed", Real(), None),
-               "seed_from_time": ("itimrand", Choice10(), None),
-               # bitrseed?,
-               "proton_e_cutoff": ("emin(1)", PosReal(), None),
-               "neutron_e_cutoff": ("emin(2)", PosReal(), None),
-               "pionp_e_cutoff": ("emin(3)", PosReal(), None),
-               "pion0_e_cutoff": ("emin(4)", PosReal(), None),
-               "pionm_e_cutoff": ("emin(5)", PosReal(), None),
-               "muonp_e_cutoff": ("emin(6)", PosReal(), None),
-               "muonm_e_cutoff": ("emin(7)", PosReal(), None),
-               "kaonp_e_cutoff": ("emin(8)", PosReal(), None),
-               "kaon0_e_cutoff": ("emin(9)", PosReal(), None),
-               "kaonm_e_cutoff": ("emin(10)", PosReal(), None),
-               "other_e_cutoff": ("emin(11)", PosReal(), None),
-               "electron_e_cutoff": ("emin(12)", PosReal(), None),
-               "positron_e_cutoff": ("emin(13)", PosReal(), None),
-               "photon_e_cutoff": ("emin(14)", PosReal(), None),
-               "deuteron_e_cutoff": ("emin(15)", PosReal(), None),
-               "triton_e_cutoff": ("emin(16)", PosReal(), None),
-               "he3_e_cutoff": ("emin(17)", PosReal(), None),
-               "he4_e_cutoff": ("emin(18)", PosReal(), None),
-               "nucleon_e_cutoff": ("emin(19)", PosReal(), None),
-               "proton_e_max": ("dmax(1)", PosReal(), None),
-               "neutron_e_max": ("dmax(2)", PosReal(), None),
-               "electron_e_max": ("dmax(12)", PosReal(), None),
-               "positron_e_max": ("dmax(13)", PosReal(), None),
-               "photon_e_max": ("dmax(14)", PosReal(), None),
-               "deuteron_e_max": ("dmax(15)", PosReal(), None),
-               "he4_e_max": ("dmax(18)", PosReal(), None),
-               "photonuclear_e_max": ("dpnmax", PosReal(), None),
-               # lib(i)
-               "charged_e_min": ("esmin", PosReal(), None),
-               "charged_e_max": ("esmax", PosReal(), None),
-               # cmin
-                "electron_positron_track_structure_e_min": ("etsmin", PosReal(), None),
-               "electron_positron_track_structure_e_max": ("etsmax", PosReal(), None),
-               "nucleon_track_structure_e_max": ("tsmax", PosReal(), None),
-               "electric_transport_type": ("negs", FinBij({"PHITS": -1, "ignore": 0, "EGS5": 1}), None),
-               "automatic_e_bounds": ("nucdata", Choice10(), None),
-               "electron_positron_adjust_weight_over_e_max": ("ieleh", Choice10(), None),
-               "nucleon_nucleus_model_switch_e": ("ejamnu", PosReal(), None),
-               "pion_nucleus_model_switch_e": ("ejampi", PosReal(), None),
-               "isobar_max_e": ("eisobar", PosReal(), None),
-               "isobar_model": ("isobar", Choice10(), None),
-               # etc.
-                }
-    def __init__(self, **kwargs):
-        self.name = "parameters"
-        for k, v in kwargs.items():
-            assert k in self.syntax, f"Unrecognized parameter {k} (with value {v}) in initialization of Parameters object.
-            Check that the correct parameters were passed to other objects."
-            setattr(self, k, v)
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def empty(self):
-        return True if self.__dict__ == {"name": "parameters"} else False
-
-    def definition(self):
-        inp = ""
-        for var, val in  self.__dict__.items():
-            if var != "name":
-                inp += f"{var} = {val}\n"
-
-        return inp
 
