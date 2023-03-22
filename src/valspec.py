@@ -1,8 +1,10 @@
 from functools import partial
-
+from hypothesis.strategies import *
 # TODO: think about if the python() methods are necessary
 
 class ValSpec():
+    def __init__(self, strat):
+        self.strat = strat
     def __or__(self, other):
         # TODO: think about if copying is necessary
         if isinstance(self, OneOf) and isinstance(other, OneOf):
@@ -20,6 +22,7 @@ class ValSpec():
 
 class Choice10(ValSpec):
     def __init__(self, c_style=False, true=True, false=False):
+        super().__init__(one_of(false, true))
         self.c_style = c_style
         self.true = true
         self.false = false
@@ -42,6 +45,8 @@ class Choice10(ValSpec):
 
 
 class Integer(ValSpec):
+    def __init__(self):
+        super().__init__(integers())
     def phits(self, val):
         if isinstance(val, int):
             return val
@@ -55,6 +60,8 @@ class Integer(ValSpec):
             return partial(lambda va, var: ValueError(f"`{var}` must be an integer; got {va}."), val)
 
 class Real(ValSpec):
+    def __init__(self):
+        super().__init__(floats())
     def phits(self, val):
         if isinstance(val, float):
             return val
@@ -65,6 +72,9 @@ class Real(ValSpec):
         return val
 
 class PosInt(ValSpec):
+    def __init__(self):
+        super().__init__(ints(min_value=0))
+
     def phits(self, val):
         if isinstance(val, int) and val > 0:
             return val
@@ -81,6 +91,8 @@ class PosInt(ValSpec):
 
 
 class PosReal(ValSpec):
+    def __init__(self):
+        super().__init__(floats(min_value=0))
     def phits(self, val):
         if isinstance(val, float) and val > 0:
             return val
@@ -99,6 +111,8 @@ class PosReal(ValSpec):
 
 
 class NegDisable(ValSpec):
+    def __init__(self):
+        super().__init__(one_of(none(), integers(), floats()))
     def phits(self, val):
         if isinstance(val, float) or isinstance(val, int) and val > 0:
             return val
@@ -117,6 +131,7 @@ class NegDisable(ValSpec):
 
 class Between(ValSpec):
     def __init__(self, start, stop):
+        super().__init__(integers(min_vale=start, max_value=stop))
         self.start = start
         self.stop = stop
 
@@ -140,6 +155,7 @@ class Between(ValSpec):
 
 class ZeroSpecial(ValSpec):
     def __init__(self, zero):
+        super().__init__(one_of(just(zero), integers()))
         self.zero = zero
 
     def phits(self, val):
@@ -161,6 +177,7 @@ class ZeroSpecial(ValSpec):
 
 class FinBij(ValSpec):
     def __init__(self, dic):
+        super().__init__(sampled_from(dic.keys()))
         self.dic = dic
 
     def phits(self, val):
@@ -175,15 +192,32 @@ class FinBij(ValSpec):
         if val in rev:
             return rev[val]
         else:
-            return partial(lambda va, keys, var: ValueError(f"`{var}` must be one of {keys}; got {va}."), list(rev.keys()))
+            return partial(lambda va, keys, var: ValueError(f"`{var}` must be one of {keys}; got {va}."), val, list(rev.keys()))
+
+class IsA(ValSpec):
+    def __init__(self, cls, index=False):
+        super().__init__(from_type(cls)) # TODO: sus
+        self.cls = cls
+        self.index = index
+
+    def phits(self, val):
+        if not isinstance(val, self.cls):
+            return partial(lambda va, cls, var: ValueError(f"`{var}` must be an instance of {cls}; got {val}."), val, self.cls)
+
+        if self.index:
+            return val.index
+        else:
+            return val.definition()
+
+    def python(self, val):
+        return val
 
 
-
-
+# TODO: needed?
 class OneOf(ValSpec):
     def __init__(self, *args):
         assert all(map(lambda x: isinstance(x, ValSpec), args)), "All arguments to OneOf must be value specifications."
-        super().__init__("(" + " | ".join([i.parse_rule for i in args]) + ")")
+        super().__init__(one_of(*[i.strat for i in args]))
         self.choices = args
 
     def phits(self, val):

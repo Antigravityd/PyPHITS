@@ -3,9 +3,51 @@
 
 # Currently, no a-type mesh support for the elevation angles.
 from base import *
+from cell import Cell
+from transform import Transform
 
-        
-common
+# Sources will be specified by an iterable whose elements are a tuple  (Source(), weight) where the last two are optional.
+# totfact and iscorr may be specified in the general parameters section.
+
+# Currently, no a-type mesh support for the elevation angles.
+from base import *
+from collections import namedtuple
+
+common = {"projectile": ("proj", FinBij({}), 0),
+          "spin": (("sx", "sy", "sz"), (PosReal(), PosReal(), PosReal()), None),
+          "mask": (("reg", "ntmax"), (IsA(Cell, index=True), PosInt()), None),
+          "transform": ("trcl", IsA(Transform, index=True), None),
+          "weight": ("wgt", PosReal(), None),
+          "charge_override": ("izst", PosReal(), None),
+          "counter_start": (("cnt(1)", "cnt(2)", "cnt(3)"), (PosInt(), PosInt(), PosInt()), None),
+          "fissile": ("ispfs", FinBij({False: 0, "fissions": 1, "neutrons": 2}), None)
+          # ibatch?
+          }
+
+semi_common = {"elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None) #TODO:isa, oneof
+               "azimuth": ("phi", PosReal(), None),
+               "dispersion": ("dom", OneOf(PosReal(), FinBij({"cos^2": -1})), None),
+               "energy": ("e0", PosReal(), 1), # TODO: make this work
+               "spectrum": ("e-type", IsA(EnergyDistribution), 1)}
+
+
+
+class Cylindrical(PhitsObject):
+    mapping = common | {"center": (("x0", "y0"), (0.0, 0.0), (posreal, posreal)),
+                        "zbounds": (("z0", "z1"), (0.0, 0.0), (posreal, posreal)),
+                        "radius": ("r0", 0.0, posreal),
+                        "cutout_radius": ("r1", 0.0, posreal)} | semi_common
+
+
+class Rectangular(PhitsObject):
+    mapping = common | {"xbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
+                        "ybounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
+                        "zbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal))} | semi_common
+
+
+
+
+
 class Cylindrical(PhitsObject):
     name = "source"
     required=["projectile", "energy"]
@@ -109,7 +151,7 @@ class Parabolic(PhitsObject):
             super().__init__(*args, **kwargs)
 
 
-        
+
 class Spherical(PhitsObject):
     name = "source"
     required = ["projectile", "energy"]
@@ -162,8 +204,8 @@ class Conical(PhitsObject):
            "charge_override", "fissile", "top", "altitude", "trim", "elevation", "azimuth",
            "dispersion", "energy")
 
-            
-                
+
+
 class Prism(PhitsObject):
     name = "source"
     required = ["projectile", "energy"]
