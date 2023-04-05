@@ -3,7 +3,7 @@
 
 # Currently, no a-type mesh support for the elevation angles.
 from base import *
-from cell import Cell
+# from cell import Cell
 from transform import Transform
 
 # Sources will be specified by an iterable whose elements are a tuple  (Source(), weight) where the last two are optional.
@@ -11,12 +11,15 @@ from transform import Transform
 
 # Currently, no a-type mesh support for the elevation angles.
 from base import *
-from collections import namedtuple
+from valspec import *
+from distribution import *
 
-common = {"projectile": ("proj", FinBij({}), 0),
+# TODO: global scaling factor totfact, and correlation option iscorr. Something with group_by?
+
+common = {"projectile": ("proj", FinBij({"proton": 2212}), 0), # TODO: make an actual Particles() valspec2
           "spin": (("sx", "sy", "sz"), (PosReal(), PosReal(), PosReal()), None),
-          "mask": (("reg", "ntmax"), (IsA(Cell, index=True), PosInt()), None),
-          "transform": ("trcl", IsA(Transform, index=True), None),
+          # "mask": (("reg", "ntmax"), (IsA(Cell, index=True), PosInt()), None),
+          # "transform": ("trcl", IsA(Transform, index=True), None),
           "weight": ("wgt", PosReal(), None),
           "charge_override": ("izst", PosReal(), None),
           "counter_start": (("cnt(1)", "cnt(2)", "cnt(3)"), (PosInt(), PosInt(), PosInt()), None),
@@ -24,247 +27,178 @@ common = {"projectile": ("proj", FinBij({}), 0),
           # ibatch?
           }
 
-semi_common = {"elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None) #TODO:isa, oneof
+semi_common = {"elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None),
                "azimuth": ("phi", PosReal(), None),
                "dispersion": ("dom", OneOf(PosReal(), FinBij({"cos^2": -1})), None),
-               "energy": ("e0", PosReal(), 1), # TODO: make this work
+               # "energy": ("e0", PosReal(), 1), unsupported; just use a uniform energy distribution
                "spectrum": ("e-type", IsA(EnergyDistribution), 1)}
 
 
 
 class Cylindrical(PhitsObject):
-    mapping = common | {"center": (("x0", "y0"), (0.0, 0.0), (posreal, posreal)),
-                        "zbounds": (("z0", "z1"), (0.0, 0.0), (posreal, posreal)),
-                        "radius": ("r0", 0.0, posreal),
-                        "cutout_radius": ("r1", 0.0, posreal)} | semi_common
-
-
-class Rectangular(PhitsObject):
-    mapping = common | {"xbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
-                        "ybounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal)),
-                        "zbounds": (("x0", "x1"), (0.0, 0.0), (posreal, posreal))} | semi_common
-
-
-
-
-
-class Cylindrical(PhitsObject):
     name = "source"
-    required=["projectile", "energy"]
-    positional=["projectile", "energy"]
-    optional=["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-              "center", "bounds", "r_out", "r_in", "elevation", "azimuth", "dispersion"]
-    ident_map={"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-               "weight": "wgt", "charge_override": "izst", "fissile": "ispfs", "center": ("x0", "y0"),
-               "bounds": ("z0", "z1"), "r_out": "r0", "r_in": "r1", "elevation": "dir", "azimuth": "phi",
-               "dispersion": "dom", "energy": "e0", "projectile": "proj"}
-    value_map={"neutrons": 2, True: 1}
-    shape=("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "factor", "charge_override",
-           "fissile", "center", "bounds", "r_out", "r_in", "elevation", "azimuth", "dispersion", "energy")
+    mapping = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+                        "zbounds": (("z0", "z1"), (Real(), Real()), None),
+                        "radius": ("r0", PosReal(), None),
+                        "cutout_radius": ("r1", PosReal(), None)} | semi_common
 
+    shape=("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start",
+           "fissile", "center", "zbounds", "radius", "cutout_radius", "elevation", "azimuth", "dispersion", "spectrum")
 
 
 class Rectangular(PhitsObject):
     name = "source"
-    required=["projectile", "energy"]
-    positional=["projectile", "energy"]
-    optional=["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-              "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion"]
-    ident_map={"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-               "weight": "wgt", "charge_override": "izst", "fissile": "ispfs", "xbounds": ("x0", "x1"),
-               "ybounds": ("y0", "y1"), "zbounds": ("z0", "z1"), "elevation": "dir", "azimuth": "phi",
-               "dispersion": "dom", "energy": "e0"}
-    value_map={"neutrons": 2, True: 1}
-    shape=("s_type = 2", "projectile", "spin", "mask", "transform", "weight", "factor", "charge_override",
-           "fissile", "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion", "energy")
+    mapping = common | {"xbounds": (("x0", "x1"), (Real(), Real()), None),
+                        "ybounds": (("x0", "x1"), (Real(), Real()), None),
+                        "zbounds": (("x0", "x1"), (Real(), Real()))} | semi_common
+
+    shape=("s-type = 2", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start"
+           "fissile", "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion", "spectrum")
+
+
+
+
 
 
 
 class Gaussian(PhitsObject):
-    def __init__(self, *args, **kwargs):
-        if "zbounds" in kwargs:
-            self.name = "source"
-            self.required = ["projectile", "energy"]
-            self.positional = ["projectile", "energy"]
-            self.optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                      "center", "fwhms", "zbounds", "elevation", "azimuth", "dispersion"]
-            self.ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                       "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                       "center": ("x0", "y0"), "fwhms": "r1", "zbounds": ("z0", "z1"),
-                       "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-            self.value_map = {"neutrons": 2, True: 1}
-            self.shape = ("s_type = 13", "projectile", "spin", "mask", "transform", "weight", "factor",
-                   "charge_override", "fissile", "center", "fwhms", "zbounds", "elevation", "azimuth",
-                   "dispersion", "energy")
-            super().__init__(*args, **kwargs)
-        else:
-            self.name = "source"
-            self.required = ["projectile", "energy"]
-            self.positional = ["projectile", "energy"]
-            self.optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                      "center", "fwhms", "zbounds", "elevation", "azimuth", "dispersion"]
-            self.ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                              "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                              "center": ("x0", "y0", "z0"), "fwhms": ("x1", "y1", "z1"),
-                              "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-            self.value_map = {"neutrons": 2, True: 1}
-            self.shape = ("s_type = 3", "projectile", "spin", "mask", "transform", "weight", "factor",
-                          "charge_override", "fissile", "center", "fwhms", "elevation", "azimuth",
-                          "dispersion", "energy")
-            super().__init__(*args, **kwargs)
+    name = "source"
+    syntax = common | {"center": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
+                       "fwhms": (("x1", "y1", "z1"), (PosReal(), PosReal(), PosReal()), None)} | semi_common
+
+    shape = ("s-type = 3", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                  "charge_override", "fissile", "center", "fwhms", "elevation", "azimuth", "dispersion", "spectrum")
+
+class GaussianPrism(PhitsObject):
+    name = "source"
+    syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+                       "fwhm": ("r1", PosReal(), None),
+                       "zbounds": (("z0", "z1"), (Real(), Real()), None)} | semi_common
+
+    shape = ("s-type = 13", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                  "charge_override", "fissile", "center", "fwhm", "zbounds", "elevation", "azimuth", "dispersion", "spectrum")
 
 
 
 
 class Parabolic(PhitsObject):
-    # Thanks to lazy typing, xyz or x-y is determined by dimension of center
-    def __init__(self, *args, **kwargs):
-        if width in kwargs and len(kwargs["width"]) == 2:
-            self.name = "source"
-            self.required = ["projectile", "energy"]
-            self.positional = ["projectile", "energy"]
-            self.optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                             "center", "width", "zbounds", "order", "elevation", "azimuth", "dispersion"]
-            self.ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                              "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                              "center": ("x0", "y0"), "width": "r1", "zbounds": ("z0", "z1"), "order": "rn",
-                              "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-            self.value_map = {"neutrons": 2, True: 1}
-            self.shape = ("s_type = 15", "projectile", "spin", "mask", "transform", "weight", "factor",
-                          "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-                          "dispersion", "energy")
-            super().__init__(*args, **kwargs)
-        else:
-            self.name = "source"
-            self.required = ["projectile", "energy"]
-            self.positional = ["projectile", "energy"]
-            self.optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                      "center", "width", "zbounds", "order", "elevation", "azimuth", "dispersion"]
-            self.ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                       "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                       "center": ("x0", "y0", "z0"), "width": ("x1", "y1", "z1"), "order": "rn",
-                       "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-            self.value_map = {"neutrons": 2, True: 1}
-            self.shape = ("s_type = 7", "projectile", "spin", "mask", "transform", "weight", "factor",
-                   "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-                   "dispersion", "energy")
-            super().__init__(*args, **kwargs)
+    name = "source"
+
+    syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+                       "width": (("x1", "y1"), (Real(), Real()), None),
+                       "zbounds": (("z0", "z1"), (Real(), Real()), None),
+                       "order": ("rn", Integer(), None)} | semi_common
+    shape = ("s-type = 7", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                  "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
+                  "dispersion", "spectrum")
+
+# The difference between these two in the manual is...sus
+class ParabolicPrism(PhitsObject):
+    name = "source"
+    syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+                       "width": ("r1", Real(), None),
+                       "zbounds": (("z0", "z1"), (Real(), Real()), None),
+                       "order": ("rn", Integer(), None)} | semi_common
+    shape = ("s-type = 15", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                  "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
+                  "dispersion", "spectrum")
 
 
 
 class Spherical(PhitsObject):
     name = "source"
-    required = ["projectile", "energy"]
-    positional = ["projectile", "energy"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-              "center", "r_in", "r_out", "direction", "elevation_bounds", "azimuth_bounds",
-              "cutoff_behavior"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-               "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-               "center": ("x0", "y0", "z0"), "r_in": "r1", "r_out": "r2", "direction": "dir",
-               "elevation_bounds": ("ag1", "ag2"), "azimuth_bounds": ("pg1", "pg2"),
-               "cutoff_behavior": "isbias", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1, "ignore": 0, "resample": 1, "outward": 1.0, "inward": -1.0,
-               "isotropic": "all", "iso": "all", "cosine": "-all"}
-    shape = ("s_type = 9", "projectile", "spin", "mask", "transform", "weight", "factor",
+    syntax = common | {"center": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
+                       "r_in": ("r1", Real(), None),
+                       "r_out": ("r2", Real(), None),
+                       "elevation_bounds": (("ag1", "ag2"), (Real(), Real()), None),
+                       "azimuth_bounds": (("pg1", "pg2"), (Real(), Real()), None),
+                       "resample_cutoff": ("isbias", Choice10(), None)} | semi_common
+    shape = ("s-type = 9", "projectile", "spin", "mask", "transform", "weight", "counter_start",
            "charge_override", "fissile", "center", "r_in", "r_out", "direction", "elevation_bounds",
-           "azimuth_bound", "cutoff_behavior", "energy")
+           "azimuth_bounds", "resample_cutoff", "spectrum")
 
 
 class Beam(PhitsObject): # I don't understand what this is trying to do
     name = "source"
-    required = ["projectile", "energy"]
-    positional = ["projectile", "energy"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-              "center", "zbounds", "gradients", "emittance", "widths", "stdevs",
-              "phase_center", "phase_angle_center", "sign"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-               "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-               "center": ("x0", "y0"), "zbounds": ("z0", "z1"), "gradients": ("rx", "ry"),
-               "emittance": "wem", "widths": ("x1", "y1"), "stdevs": ("xmrad1", "ymrad1"),
-               "phase_center": ("x2", "y2"), "phase_angle_maxes": ("xmrad2", "ymrad2"), "sign": "dir", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 11", "projectile", "spin", "mask", "transform", "weight", "factor",
-           "charge_override", "fissile", "center", "zbounds", "gradients", "emittance", "widths",
-           "stdevs", "phase_center", "phase_angle_center", "sign")
+    syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+                       "eccentricity": (("x1", "y1"), (Real(), Real()), None),
+                       "zbounds": (("z0", "z1"), (Real(), Real()), None),
+                       "phase_gradients": (("rx", "ry"), (Real(), Real()), None),
+                       "sampling": ("wem", OneOf(FinBij({"gaussian": 0}), PosReal()), None),
+                       "dispersion": (("x1", "y1"), (Real(), Real()), None),
+                       "angle_dispersion": (("xmrad1", "ymrad1"), (PosReal(), PosReal()), None),
+                       "phase_center": (("x2", "y2"), (Real(), Real()), None),
+                       "phase_angle_center": (("xmrad2", "ymrad2"), (Real(), Real()), None),
+                       "positive": ("dir", Choice10(true=1, false=-1), None),
+                       "spectrum": ("e-type", IsA(EnergyDistribution), 1)}
+
+    shape = ("s-type = 11", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+             "charge_override", "fissile", "center", "eccentricity", "zbounds", "phase_gradients", "sampling", "dispersion",
+             "angle_dispersion", "phase_center", "phase_angle_center", "positive", "spectrum")
+
+
+# decay-turtle??????
 
 
 class Conical(PhitsObject):
     name = "source"
-    required = ["projectile", "energy"]
-    positional = ["projectile", "energy"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                "top", "altitude", "trim", "elevation", "azimuth", "dispersion"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                 "top": ("x0", "y0", "z0"), "altitude": ("x1", "y1", "z1"), "trim": ("r0", "r1"),
-                 "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 18", "projectile", "spin", "mask", "transform", "weight", "factor",
-           "charge_override", "fissile", "top", "altitude", "trim", "elevation", "azimuth",
-           "dispersion", "energy")
+    syntax = common | {"top": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
+                       "altitude": (("x1", "y1", "z1"), (Real(), Real(), Real()), None),
+                       "trim": (("r0", "r1"), (Real(), Real()), None),
+                       "angle": ("r2", PosReal(), None)} | semi_common
+    shape = ("s-type = 18", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+             "charge_override", "fissile", "top", "altitude", "trim", "angle", "elevation", "azimuth",
+             "dispersion", "spectrum")
 
 
 
-class Prism(PhitsObject):
+class TrianglePrism(PhitsObject):
     name = "source"
-    required = ["projectile", "energy"]
-    positional = ["projectile", "energy"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                "origin", "side1", "side2", "extrusion", "attenuation", "elevation", "azimuth", "dispersion"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                 "origin": ("x0", "y0", "z0"), "side1": ("x1", "y1", "z1"), "side2": ("x2", "y2", "z2"),
-                 "extrusion": ("x3", "y3", "z3"), "attenuation": "exa",
-                 "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 20", "projectile", "spin", "mask", "transform", "weight", "factor",
+    syntax = common | {"origin": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
+                       "side1": (("x1", "y1", "z1"), (Real(), Real(), Real()), None),
+                       "side2": (("x2", "y2", "z2"), (Real(), Real(), Real()), None),
+                       "extrusion": (("x3", "y3", "z3"), (Real(), Real(), Real()), None),
+                       "attenuation": ("exa", PosReal(), None)} | semi_common
+    shape = ("s-type = 20", "projectile", "spin", "mask", "transform", "weight", "counter_start",
              "charge_override", "fissile", "origin", "side1", "side2", "extrusion", "attenuation", "elevation", "azimuth",
-             "dispersion", "energy")
+             "dispersion", "spectrum")
 
 
 
-class Grid(PhitsObject):
-    name = "source"
-    required = ["projectile", "energy", "mesh"]
-    positional = ["projectile", "energy", "mesh"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                "elevation", "azimuth", "dispersion", "e0", "cutoff_behavior"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                 "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 22", "projectile", "spin", "mask", "transform", "weight", "factor",
-             "charge_override", "fissile", "mesh", "elevation", "azimuth", "dispersion", "energy")
+# class Grid(PhitsObject):
+#     name = "source"
+#     syntax = common | {"meshes": (("x-type", "y-type", "z-type"), ())}
+#     required = ["projectile", "energy", "mesh"]
+#     positional = ["projectile", "energy", "mesh"]
+#     optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
+#                 "elevation", "azimuth", "dispersion", "e0", "cutoff_behavior"]
+#     ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
+#                  "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
+#                  "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
+#     value_map = {"neutrons": 2, True: 1}
+#     shape = ("s-type = 22", "projectile", "spin", "mask", "transform", "weight", "factor",
+#              "charge_override", "fissile", "mesh", "elevation", "azimuth", "dispersion", "energy")
 
 
 
-class TetrahedralSource(PhitsObject): # TODO: tetrahedral geometry
-    name = "source"
-    required = ["projectile", "energy"]
-    positional = ["projectile", "energy"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                "cell", "elevation", "azimuth", "dispersion"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                 "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 24", "projectile", "spin", "mask", "transform", "weight", "factor",
-             "charge_override", "fissile", "mesh", "elevation", "azimuth", "dispersion", "energy")
+# class TetrahedralSource(PhitsObject): # TODO: subobjects
+#     name = "source"
+#     syntax = common | {"cell": ("tetreg", IsA(Cell), 2)} | semi_common
+#     shape = ("s-type = 24", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+#              "charge_override", "fissile", "cell", "elevation", "azimuth", "dispersion", "spectrum")
 
-class SurfaceSource(PhitsObject):
-    name = "source"
-    required = ["projectile", "energy", "surface", "cut"]
-    positional = ["projectile", "energy", "surface", "cut"]
-    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-                "elevation", "azimuth", "dispersion"]
-    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
-                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
-                 "surface": "suf",
-                 "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
-    value_map = {"neutrons": 2, True: 1}
-    shape = ("s_type = 26", "projectile", "spin", "mask", "transform", "weight", "factor",
-             "charge_override", "fissile", "surface", "cut", "elevation", "azimuth", "dispersion", "energy")
+
+# class SurfaceSource(PhitsObject):
+#     name = "source"
+#     syntax = common | {"surface": ("suf", IsA(Surface), 2),
+#                        "cut": ("cut", IsA(Cell), 3)} | semi_common # TODO: cut sus
+
+#     shape = ("s-type = 26", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+#              "charge_override", "fissile", "surface", "cut", "elevation", "azimuth", "dispersion", "spectrum")
+
+# dump file
+
+# user source
 
 # class Duct(PhitsObject):
 #     name = "source"

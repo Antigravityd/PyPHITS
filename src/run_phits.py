@@ -10,14 +10,7 @@ import numpy as np
 import pandas as pd
 import tempfile as tf
 
-from base import *
-from cell import *
-from material import *
-from misc import *
-from source import *
-from surface import *
-from tally import *
-from transform import *
+from base import PhitsObject
 
 
 
@@ -114,27 +107,28 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
                     "reg_name": [],
                     "counter": [],
                     "timer": [],
-                    "t-track": [],
+                    # "t-track": [],
                     "t-cross": [],
-                    "t-point": [],
-                    "t-adjoint": [],
-                    "t-deposit": [],
-                    "t-deposit2": [],
-                    "t-heat": [],
-                    "t-yield": [],
+                    # "t-point": [],
+                    # "t-adjoint": [],
+                    # "t-deposit": [],
+                    # "t-deposit2": [],
+                    # "t-heat": [],
+                    # "t-yield": [],
                     "t-product": [],
-                    "t-dpa": [],
-                    "t-let": [],
-                    "t-sed": [],
+                    # "t-dpa": [],
+                    # "t-let": [],
+                    # "t-sed": [],
                     "t-time": [],
-                    "t-interact": [],
-                    "t-dchain": [],
-                    "t-wwg": [],
-                    "t-wwbg": [],
-                    "t-volume": [],
-                    "t-gshow": [],
-                    "t-rshow": [],
-                    "t-3dshow": []}
+                    # "t-interact": [],
+                    # "t-dchain": [],
+                    # "t-wwg": [],
+                    # "t-wwbg": [],
+                    # "t-volume": [],
+                    # "t-gshow": [],
+                    # "t-rshow": [],
+                    # "t-3dshow": []
+                    }
 
     for node in unique:
         type_divided[node.name].append(node)
@@ -297,13 +291,13 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
 
 
-def run_phits(sources, cells, tallies, command="phits", error_stop=True, filename="phits.inp", return_type="dict", **kwargs):
+def run_phits(sources, cells, tallies, command="phits", error_stop=True, filename="phits.inp", return_type="dict", raw="", **kwargs):
     # TODO: consider how to read stdout/output files into returnable formats
     # WARNING: setting the command variable opens up shell injection attacks, as sp.run() with
     # shell=True is done unfiltered. Should see about using shlex.quote() to sanitize, since title may be specified by the user
 
     with tf.TemporaryDirectory() as newdir:
-        inp = make_input(sources, cells, tallies, **kwargs)
+        inp = make_input(sources, cells, tallies, parameters=kwargs, raw=raw)
         with open(f"{filename}", "w") as inp_file:
             inp_file.write(inp)
 
@@ -324,8 +318,8 @@ def run_phits(sources, cells, tallies, command="phits", error_stop=True, filenam
                 print(r)
 
 
-        for t in tallies:
-            if
+        # for t in tallies:
+        #     if t
 
         return result
 

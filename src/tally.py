@@ -3,20 +3,30 @@ from cell import *
 import collections as col
 
 
+common = {"cells": ("reg", List(IsA(Cell, index=True)), 0),
+
+          "particles": ("part", List(Particle()), None),
+          }
 # counters? std cutoff? bounds?
 class DumpFluence(PhitsObject):
     name = "t-cross"
+    syntax = {"out": (None, IsA(Cell, index=True), 0),
+              "into": (None, IsA(Cell, index=True), 1),
+              "area": (None, PosReal(), 2),
+              }
     required = ["out", "into", "area", "data", "output_type"]
     positional = ["out", "into", "area", "data", "output_type"]
     optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
     shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),)
     prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
                lambda self: f"reg = {self.group_size}", lambda self: f"dump = -{len(self.data)}",
-               lambda self: " ".join([str(i) for i in self.data]), ("r-out", "r-in", "\\area"))
+               lambda self: " ".join([str(i) for i in self.data]), ("r-out", "r-in", "'area"))
     ident_map = {"particles": "part"}
     group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
                              self.time_bounds)
     separator = lambda self: self.section_title()
+
+
 
 class DumpProduct(PhitsObject):
     name = "t-cross"

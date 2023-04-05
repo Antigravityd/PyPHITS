@@ -1,7 +1,19 @@
 from valspec import *
 import re
 
-def continue_lines(inp):        # Continue lines that are too long
+__pdoc__ = dict()
+__pdoc__["builds"] = False
+__pdoc__["slices"] = False
+
+test = 1
+"""
+do   | tables
+- | ---
+even | work
+"""
+
+def _continue_lines(inp: str) -> str:
+    """If a line is too long for PHITS to handle, use PHITS's line continuation syntax to fix it."""
     r = ""
     length = 0
     last_whitespace = 0
@@ -21,225 +33,121 @@ def continue_lines(inp):        # Continue lines that are too long
 
 
 # Configuration options
-g_value_type = "Python"
-def settings(value_type="Python"):
-    """Configure module-level parameters.
+readable_remapping = True
+"""If `True`, use a remapped initialization syntax that's more informative.
+   E.g., `Parameters(control="output_echo_only")` instead of `Parameters(icntl=3)`.
 
-    Options:
-      - value_type = "Python" | "PHITS"
-        If "Python", use a remapped syntax that's more informative. E.g., `Parameters(control="output_echo_only")`
-        instead of `Parameters(icntl=3)`.
-
-        If "PHITS", use a syntax identical to that specified in the manual (i.e., the latter form in the above example).
-        Note that some identifiers in PHITS do not conform to Python's identifier syntax (e.g. 2d-type, emin(14));
-        these identifiers are sanitized as follows:
-           - dashes -> underscores
-           - beginning with a number -> that clause moved to the end
-           - parentheses -> omitted
-
-        For the examples above, the sanitized identifiers would be type_2d and emin14.
-    """
-    global g_value_type
-    g_value_type = new_value_type
+   If `False`, use a syntax as close as possible to that specified in the PHITS manual (i.e., the latter form in the above example).
+   Note that some identifiers in PHITS do not conform to Python's identifier syntax (e.g. 2d-type, emin(14));
+   these identifiers are sanitized as follows:
+       - dashes -> underscores
+       - beginning with a number -> that clause moved to the end
+       - parentheses -> omitted"""
 
 
 class PhitsObject:
-    r"""The base class distinguishing objects that are intended to end up in some section of a .inp file,
+    """The base factory class distinguishing objects that are intended to end up in some section of a `.inp` file,
     and defining equality and hashability of such objects in sensible ways.
 
-    PhitsObject values correspond to some section of an input file.
-    As such, they have a .definition() method that returns a textual representation of the value to be inserted into the input file:
-    >>> print(Cylindrical("241Am", 2.2, fissile="neutrons", bounds=(-0.25, 0.25), r_out=0.3).definition())
-
-    They also have a .prelude_str() method that returns text that is to preceed the whole set of values of that type:
-    >>> print()
-
-    Last, there's a .section_title() method that gives the name of the section into which the objects definition will be placed:
-    >>> print()
-n
-    The PhitsObject class is also a factory for subtypes.
-    As an example of how subtypes should be defined:
-    >>> class Cylindrical(PhitsObject):
-    ...    name = "source"
-    ...    required = ["projectile", "energy"]
-    ...    positional = ["projectile", "energy"]
-    ...    optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile", \
-    ...                "center", "bounds", "r_out", "r_in", "elevation", "azimuth", "dispersion"]
-    ...    ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl", \
-    ...                 "weight": "wgt", "charge_override": "izst", "fissile": "ispfs", "center": ("x0", "y0"), \
-    ...                 "bounds": ("z0", "z1"), "r_out": "r0", "r_in": "r1", "elevation": "dir", "azimuth": "phi", \
-    ...                 "dispersion": "dom", "energy": "e0", "projectile": "proj"}
-    ...    value_map = {"neutrons": 2, True: 1}
-    ...    shape = ("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "factor", "charge_override", \
-    ...             "fissile", "center", "bounds", "r_out", "r_in", "elevation", "azimuth", "dispersion", "energy")
-
-    The "name" attribute is the [Section] of the input file into which the definition is to be inserted.
-
-    "Required" gives the required (keyword or positional) arguments to the constructor, "positional" those which must be positional,
-    and "optional" the optional (keyword or positional) arguments.
-
-    The "ident_map" is a dictionary whose keys are arguments to the constructor (which become attributes of the instance),
-    and whose values are the identifier(s) to which those arguments are to be converted for insertion into the input file.
-    The inserted line is always something like "r0 = 5.3", hence the term "identifier" (the text to the left of the equality is substituted)
-    This allows more idiomatic and descriptive naming of parameters, for example, "charge_override" as opposed to "izst" above,
-    or the passage of iterables for assignments that ought to be grouped, like the components of a vector quantity.
-    >>> print() # charge_override -> izst example
-    >>> print() # spin -> sx, sy, sz example
-    Similarly, the "value_map" does the same for the other side of the equals sign.
-
-    Not shown in the above example, the "subobjects" parameter is used to indicate the names of any sections whose types can appear as attributes.
-    These subobjects usually need a reference to the current object in their definition, so this parameter indicates to later processing
-    to go in and update the subobjects accordingly
-    This is used, for example, in the Material() object to enable the passage of TimeChange() objects directly to the material that is to change:
-    >>> print()
-    The "nones" parameter, also not shown above, is used to set a default value to a parameter that we consider optional, but that PHITS doesn't.
-    >>> print()
-
-    The real magic is in the "shape" parameter.
-    It's a purpose-specific, ugly, and questionably-implemented analog of Emacs Lisp's skeleton system for programmatic text insertion,
-    encoding how the attributes of the object are to be translated into text in the input file.
-    The lion's share of data in input files are either parameter lines, of the form "<identifier> = <value>", or grid-like lines,
-    of the form "<datum> <datum> <datum> ..."
-    The value of the parameter is a tuple whose entries represent lines of input, ordered as given.
-    If an entry is the name of an attribute of the object, name and value of that attribute are inserted as the parameter line "name = value".
-    If an entry is a string that is not the name of an attribute, then it is inserted verbatim as text.
-    If an entry is callable, it is considered to be a function that takes the current object as an argument and does something more complex.
-    If an entry is a tuple itself, then this indicates a grid-like line, where the entries in the tuple are evaluated exactly as above,
-    only if the entry is an attribute then only its value is inserted, and with spaces rather than newlines separating representations of
-    entries of the tuple.
-    Trailing backslashes in a string disable the insertion of the separating whitespace,
-    and a string entry with only a backslash removes the separating whitespace of the previous entry (in case it's callable).
-
-    There's also a series of parameters related to grouping, that allow TODO: finish
-
-    There's a "parser" and "validator" parameters, the first of which is a string representing part of a Lark parser
-    used to extract the object from a string representing part of an .inp (it's not complete---for brevity,
-    a set of common parse rules are retained by the this base class, and the parser string is appended to that)
-    and the latter of which is a function which inspects the resulting tree and decides if it's legal PHITS input.
+    PhitsObject values always correspond to some section of an input file.
     """
-    required = []
-    positional = []
-    optional = []
-    ident_map = dict()
-    value_map = dict()
-    subobjects = []
-    nones = dict()
+
+    name = None
+    """A string corresponding to the PHITS .inp section an object appears in. See `PhitsObject.names`"""
+
+    syntax = dict()
+    """A dictionary with entries of the form `"python_identifier": ("PHITS_identifier", acceptable_ValSpec, arg_position, Optional(none_val))`.
+    The key is the attribute on the Python PhitsObject instance, and the keyword argument necessary to set it.
+    The second is what type the object must be, as a ValSpec.
+    The third is what index in `*args` the argument must have; if it is set to `None`, the argument is optional.
+    The last is a value to put in the .inp if the attribute is `None` at compile-time; ordinarily, it's just nothing.
+    The first two arguments can be tuples, in which case the passed value must be a tuple of the specified type;
+    the single Python assignment corresponds to the entrywise assignments of this tuple to the PHITS identifiers in the .inp."""
+
+    shape = tuple()
+    """A tuple that details how the object is to be represented in the .inp file.
+    The syntax is inspired by Emacs Lisp skeletons, with some optimizations to tailor it for this use-case.
+    In general, the strings in the tuple are inserted verbatim, with a newline in between them.
+    If an entry is the name of an attribute of the instance, say `"attr"` whose value is not `None`,
+    then the string `PHITS_identifier = acceptable_ValSpec.phits(self.attr)`, based on a lookup of `attr` in `PhitsObject.syntax`, is inserted.
+    If an entry is `self`, then `self.index` is inserted.
+    To avoid the above two behaviors, and insert a string verbatim, prepend a quote `'`.
+    If an entry is another tuple, that tuple gets evaluated as above, but the `identifier = ` is not inserted,
+    and a mere space separates the entries.
+    Appending a `\\` to any string disables the insertion of the spacing that would otherwise follow;
+    similarly, having `\\` as the last string of a tuple entry disables the newline that would otherwise follow.
+
+    If this attribute is callable, it gets called on the instance of the PhitsObject, and the result is processed according to the rules above.
+    """
+
     index = None
+    """The compile-time assigned number of an object. Should not be set directly."""
+
     no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
                "group_by", "separator", "prelude", "max_groups", "group_size", "parser", "validator"}
+    """Attributes that don't affect the identity of a PhitsObject."""
+
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
              "neutron_magnetic_field", "mapped_magnetic_field", "uniform_electromagnetic_field", "mapped_electromagnetic_field",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
              "forced_collisions", "repeated_collisions", "volume", "multiplier", "mat_name_color", "reg_name", "counter", "timer",
              "t-track", "t-cross", "t-point", "t-adjoint", "t-deposit", "t-deposit2", "t-heat", "t-yield", "t-product", "t-dpa",
              "t-let", "t-sed", "t-time", "t-interact", "t-dchain", "t-wwg", "t-wwbg", "t-volume", "t-gshow", "t-rshow","t-3dshow"}
+    """The permissible `PhitsObject.name`s."""
 
+    group_by = None
+    """A key function by which to group PhitsObjects together.
+    These groups are necessary, for instance, in the `Importance` section, where one can set different importances for different particles
+    in the same cell."""
+
+    separator = None
+    """A function returning a string to be placed between the definitions of the groups; see `PhitsObject.group_by`."""
+
+    max_groups = None
+    """The maximum number of groups of objects of a given type; see `PhitsObject.group_by`."""
+
+    prelude = tuple()
+    """A skeleton just like `PhitsObject.shape`, but inserted before all definitions of the `PhitsObject` subclass in question."""
     def __init__(self, *args,  **kwargs):
+        """Arguments are interpreted according to `PhitsObject.syntax`, and then any leftovers in `kwargs` are used to create a `Parameters`
+        object, which is then assigned to a `parameters` attribute."""
         assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
+        required = list(map(lambda tup: tup[0],
+                            sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
+        assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
+        for idx, arg in enumerate(args):
+            setattr(self, required[idx], arg if not isinstance(arg, list) else tuple(arg))
 
-        if hasattr(self, syntax): # new-style definition, with high-resolution mapping
-            required = list(map(lambda tup: tup[0],
-                                sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
-            assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
-            for idx, iden in enumerate(args):
-                setattr(self, required[idx], arg if not isinstance(arg, list) else tuple(arg))
-
-            for arg in self.syntax:
-                if arg in kwargs:
-                    setattr(self, arg, kwargs[arg] if not isinstance(arg, list) else tuple(arg))
-                else:
-                    setattr(self, arg, None)
-
-            # TODO: reconsider
-            for attr in self.subobjects:
-                child = getattr(self, attr)
-                if hasattr(child, self.name):
-                    val = getattr(child, self.name)
-                    if val is None:
-                        setattr(child, self.name, self)
-
-            remaining = {k: v for k, v in kwargs.items() if k not in self.syntax}
-            if remaining:
-                self.parameters = Parameters(**remaining)
-
-        else: # Old-style definition, with "required" and "optional" lists, separate mappings, no value reassignment, etc.
-              # Should be removed eventually.
-
-            if len(args) == len(self.positional):
-                for idx, arg in enumerate(args):
-                    setattr(self, self.positional[idx], arg if not isinstance(arg, list) else tuple(arg))
+        for arg in self.syntax:
+            if arg in kwargs:
+                setattr(self, arg, kwargs[arg] if not isinstance(arg, list) else tuple(arg))
             else:
-                raise TypeError(f"Wrong number of positional arguments specified in the definition of {self.name} object.")
+                setattr(self, arg, None)
 
-            for arg in self.required:
-                if arg not in self.positional:
-                    if arg in kwargs:
-                        setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
-                    else:
-                        raise TypeError(f"Missing required argument in the definition of {self.name} object.")
+        # TODO: reconsider
+        for attr in self.subobjects:
+            child = getattr(self, attr)
+            if hasattr(child, self.name):
+                val = getattr(child, self.name)
+                if val is None:
+                    setattr(child, self.name, self)
 
-            for arg in self.optional:
-                if arg in kwargs:
-                    setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else tuple(kwargs[arg]))
-                else:
-                    if arg in self.nones:
-                        setattr(self, arg, self.nones[arg])
-                    else:
-                        setattr(self, arg, None)
-
-            # TODO: reconsider
-            for attr in self.subobjects:
-                child = getattr(self, attr)
-                if hasattr(child, self.name):
-                    val = getattr(child, self.name)
-                    if val is None:
-                        setattr(child, self.name, self)
+        remaining = {k: v for k, v in kwargs.items() if k not in self.syntax}
+        if remaining:
+            self.parameters = Parameters(**remaining)
 
 
 
-            remaining = {k: v for k, v in kwargs.items() if k not in self.required and k not in self.optional}
-            if remaining:
-                self.parameters = Parameters(**remaining)
-
-
-
-    def add_definition(self, how, to, assignments=True):
-        """Helper function to handle shape and prelude skeletons."""
+    def _add_definition(self, how: tuple, to: str, assignments: bool = True) -> str:
+        """Recursively performs skeleton insertions according to `how` at the end of `to`."""
         if callable(how):
             how = how(self)
 
-        def idx(ob):
-            if isinstance(ob, PhitsObject):
-                return str(ob.index)
-            else:
-                return ob
-
-        def attr_map(ob):
-            if ob in self.ident_map:
-                return self.ident_map[ob]
-            else:
-                return ob
-
-        def val_map(ob):
-            if ob in self.value_map:
-                return self.value_map[ob]
-            elif isinstance(ob, tuple):
-                return " ".join(map(val_map, ob))
-            elif isinstance(ob, Mesh): # TODO: consider refactoring out into a method of the Mesh class; it seems out of place here
-                inp = f"{ob.axis[0]}-type = 1\n"
-                inp += f"n{ob.axis[0]} = {len(ob.bins)-1}\n"
-                for i in ob.bins:
-                    inp += f"{i} "
-                inp += "\n"
-                return inp
-            else:
-                return ob
-        
         for attr in how:
-            if isinstance(attr, str) and attr[0] == "\\": # wat the fug
+            if isinstance(attr, str) and attr[0] == "'":
                 to += attr[1:]
                 return to
-            assign = ""
+
             endstr = "\n" if assignments else " "
             spacing = " "
 
@@ -248,60 +156,89 @@ n
                 spacing = ""
                 attr = attr[:-1]
 
-            if callable(attr):
-                to += attr(self)
-                to += endstr
-
-            elif isinstance(attr, tuple):
+            if isinstance(attr, tuple):
                 to += self.add_definition(attr, to, assignments=False)
-                if isinstance(attr[-1], str) and attr[-1][-1] == "\\":
+                if attr[-1] == "\\":
                     to += " "
                 else:
                     to += "\n"
 
-            elif hasattr(self, attr):
+            elif attr in self.syntax:
                 val = getattr(self, attr)
-                if val is not None:
-                    if attr in self.ident_map and isinstance(attr_map(attr), tuple):
-                        for i, (att2, val2) in enumerate(zip(attr_map(attr), val)):
-                            assign = f"{att2}{spacing}={spacing}" if assignments else ""
-                            to += f"{assign}{idx(val_map(val2))}{endstr}"
-                    else:
+                phits_iden = self.syntax[attr][0]
+                valspec = self.syntax[attr][1]
+                noneval = ""
+                if len(self.synatx[attr]) == 4:
+                    noneval = self.syntax[attr][3]
 
-                        assign = f"{attr_map(attr)}{spacing}={spacing}" if assignments else ""
-                        to += f"{assign}{idx(val_map(val))}{endstr}"
+                if val is not None:
+                    if isinstance(phits_iden, tuple):
+                        for i, (phits, spec) in enumerate(zip(phits_iden, valspec)):
+                            assign = f"{phits}{spacing}={spacing}" if assignments else ""
+                            to += f"{assign}{spec.phits(val[i])}{endstr}"
+                    else:
+                        assign = f"{phits_iden}{spacing}={spacing}" if assignments else ""
+                        to += f"{assign}{valspec.phits(val)}{endstr}"
 
             else:
                 if attr == "self":
-                    to += idx(self)
+                    to += self.index
                     to += endstr
                 else:
                     to += attr
                     to += endstr
         return to
 
-    def prelude_str(self):
-        """Return a string to appear before all instances of a type of PhitsObject."""
+    def prelude_str(self) -> str:
+        """Return a string to appear before the collection of all definitions of subclass instances in an `.inp` file."""
         inp = self.add_definition(self.prelude, "")
 
-        return continue_lines(inp)
+        return _continue_lines(inp)
 
-    def definition(self):
-        """Return the string representing the particular PhitsObject."""
+    def definition(self) -> str:
+        """Return the string representing the particular PhitsObject in an `.inp` file."""
         inp = self.add_definition(self.shape, "")
 
-        return continue_lines(inp)
+        return _continue_lines(inp)
 
-    def section_title(self):
+    def section_title(self) -> str:
         """Return the section title under which a PhitsObject belongs."""
         sec_name = self.name.replace("_", " ").title()
         return f"[{sec_name}]\n"
 
+    @classmethod
+    def syntax_desc(self) -> str:
+        """Return a readable summary of the initialization syntax of the PhitsObject in question.
+        Used to generate documentation, but is useful in interactive sessions to """
+        required = sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])
+        opt = [(k, v) for k, v in self.syntax.items() if v[2] is None]
+        r = ""
+        if required:
+            r = "Required arguments:\nPHITS name|Accepted value\n----|----\n"
+            for py_attr, (phits_attr, valspec, position) in required:
+                r += f"{phits_attr}|{valspec.description()}\n"
 
-    def sanitize(self, iden):
+        if opt:
+            r += "Optional arguments:\nPython name|PHITS name|Accepted value\n----|----|----\n"
+            for py_attr, (phits_attr, valspec, position) in opt:
+                if isinstance(valspec, tuple):
+                    j = ", "
+                    r += f"`{py_attr}`|`{phits_attr}`|A tuple ({j.join(map(lambda x: x.description().capitalize(), valspec))}).\n"
+                else:
+                    r += f"`{py_attr}`|`{phits_attr}`|{valspec.description().capitalize()}.\n"
+        return r
+
+
+    @classmethod
+    def syntax_for(self, attr: str) -> str:
+        """Return a readable summary of a specific initialization parameter of the PhitsObject in question."""
+        r = "PHITS name\tAccepted value\tPosition\n"
+        r += f"{self.syntax[attr][0]}\t{self.syntax[attr][1]}\t{self.syntax[attr][2]}"
+        return r
+
+    def _sanitize(self, iden: str) -> str:
         """Make a PHITS identifier Python-acceptable.
-
-        See the documentation for settings().
+        See `readable_syntax`.
         """
         r = iden.replace("-", "_")
         r = r.replace("(", "")
@@ -313,7 +250,8 @@ n
         return r
 
 
-    def __eq__(self, other):
+    def __eq__(self, other: "PhitsObject") -> bool:
+        """PhitsObjects should be equal if their definitions would be the same."""
         if type(self) != type(other):
             return False
         elif hasattr(self, "__dict__") and hasattr(other, "__dict__"):
@@ -321,9 +259,7 @@ n
             d2 = {k: v for k, v in other.__dict__.items() if k not in self.no_hash}
             return d1 == d2
 
-    def __hash__(self):
+    def __hash__(self) -> int:
+        """PhitsObjects have the hash of their identity-defining attributes."""
         return hash(tuple(v for k, v in sorted(self.__dict__.items()) \
                           if (self not in v.__dict__.values() if hasattr(v, "__dict__") else True) and k not in self.no_hash))
-
-
-
