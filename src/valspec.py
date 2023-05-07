@@ -544,7 +544,7 @@ class OrthogonalMatrix(ValSpec):
         if isinstance(val, np.ndarray):
             val = list(map(tuple, val))
 
-        rounding = np.finfo(np.float32).eps
+        rounding = 2.0e-6
         if (np.array(val) @ np.transpose(val) - np.identity(3) < rounding).all():
             return val
         else:
@@ -556,11 +556,11 @@ class OrthogonalMatrix(ValSpec):
 
 class Text(ValSpec):
     def __init__(self):
-        super().__init__(text())
+        super().__init__(text(min_size=1))
 
     def phits(self, val):
-        if isinstance(val, str):
-            return "{" + val + "}" # TODO: un-specialize if unnecessary
+        if isinstance(val, str) and val != "":
+            return "{ " + val + " }" # TODO: un-specialize if unnecessary
         else:
             return partial(lambda va, var: ValueError(f"`{va}` must be a string; got {val}."), val)
 

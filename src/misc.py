@@ -103,7 +103,7 @@ class DeltaRay(PhitsObject):
 
 class TrackStructure(PhitsObject):
     name = "track_structure"
-    syntax = {"model": (None, FinBij({None: 0, "general": -1, "optimized": 1}), 0)}
+    syntax = {"model": (None, FinBij({"none": 0, "general": -1, "optimized": 1}), 0)}
     superobjects = ["cell"]
     prelude = (("reg", "mID"),)
     shape = lambda self: (("cell", "model"),)
@@ -253,6 +253,7 @@ class RegionName(PhitsObject):
     syntax = {"reg_name": (None, Text(), 0),
               "size": (None, PosReal(), 1),
               }
+    superobjects = ["cell"]
     shape = (("cell", "reg_name", "size"),)
 
 

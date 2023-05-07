@@ -84,7 +84,7 @@ class Cone(PhitsObject):
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "TRC", " ".join(self.center), " ".join(self.height), "bottom_r", "top_r"),)
+                           "TRC", " ".join(str(i) for i in self.center), " ".join(str(i) for i in self.height), "bottom_r", "top_r"),)
 
 
 class SimpleConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid parallel to an axis of the form
@@ -182,9 +182,9 @@ class Wedge(PhitsObject):
                        "s2": ((None, None, None), (Real(), Real(), Real()), 2),
                        "height": ((None, None, None), (Real(), Real(), Real()), 3)}
 
-    shape = ((lambda self: f"*{self.index}" if self.reflective else
-              (f"+{self.index}" if self.white else f"{self.index}"),
-              "transform", "WED", "tip", "s1", "s2", "height"),)
+    shape = lambda self: ((f"*{self.index}" if self.reflective else
+                           (f"+{self.index}" if self.white else f"{self.index}"),
+                           "transform", "WED", "tip", "s1", "s2", "height"),)
 
 
 class TetrahedronBox(PhitsObject):
@@ -193,9 +193,9 @@ class TetrahedronBox(PhitsObject):
                        "yrange": ((None, None), (Real(), Real()), 1),
                        "zrange": ((None, None), (Real(), Real()), 2)}
 
-    shape = ((lambda self: f"*{self.index}" if self.reflective else
-              (f"+{self.index}" if self.white else f"{self.index}"),
-              "transform", "RPP", "xrange", "yrange", "zrange"),)
+    shape = lambda self : ((f"*{self.index}" if self.reflective else
+                            (f"+{self.index}" if self.white else f"{self.index}"),
+                            "transform", "RPP", "xrange", "yrange", "zrange"),)
 
 surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
                  IsA(Sphere, index=True), IsA(Cylinder, index=True), IsA(Cone, index=True), IsA(SimpleConic, index=True),

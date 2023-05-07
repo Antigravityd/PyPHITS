@@ -54,10 +54,6 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
                     add_to_set(child, the_set, an_obj)
 
     add_to_set(cells, unique)
-    for cell in cells: # this ideally should "just work." Every language should have ADTs
-        if hasattr(cell, "regions"):
-            for sur in cell.regions:
-                add_to_set(sur, unique)
 
     toset = OuterVoid([], **outer_void_properties)
     toset.regions = (~reduce(lambda c1, c2: c1 | c2, cells)).regions
