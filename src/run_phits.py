@@ -1,86 +1,79 @@
 from datetime import datetime
 import subprocess as sp
-import os
-import sys
-import shutil as sh
 import itertools as it
+from functools import reduce
 import collections as col
-import re
 import numpy as np
 import pandas as pd
 import tempfile as tf
+import re
+import os
 
 from base import PhitsObject
+from parameters import Parameters
+from cell import OuterVoid
 
 
 
-# This is complicated enough to sketch the algorithm before writing code (shocker!)
-# Given a list of cells, sources, and measurements (with some wacky options thrown in), we want to generate
-# all of the "background" data necessary to build those cells automatically, e.g. generate the surfaces necessary to build the cells.
-# To that end, we divide the options into "cell-like," "source-like," and "tally-like," and require their specification in the initialization of the
-# object of the corresponding type. This is natural: why should the surfaces I only think about in the context of one or two cells be specified separately?
-# There do exist options that don't satisfy this natural classification: transforms come to mind, as they may be used in surface, source, or
-# "backend" contexts.
+def make_input(cells, sources, tallies, title: str = str(datetime.now()), parameters: dict = dict(), cross_sections=[], raw="",
+               outer_void_properties: dict = dict(), **kwargs) -> str:
+    """Given a situation, produces a corresponding input file.
 
-# The user specifies a list of sources, a list of cells, and a list of tallies
-# we reconstruct the input file by first going through every "PHITSable" property
-# and generating a digraph of the distinct values (up to the equivalence relation of each class's __eq__), with adjacency x → y denoting
-# "y needs x for its definition." This is necessary because we don't want to duplicate definitions, but we want to retain the connection
-# of parent-child; we need to define two parents with __eq__ children in terms of /one/ .inp line representing the child.
-# The set of values of each type are enumerated, and the graph updated to reflect each object's enumeration, representing the order in which the objects will appear in the input file.
-# We can now use the child's enumeration in the definition of the parent, which is what we're after.
+    Required arguments:
 
-# In effect, we take the graph of Python object relationships, apply an algorithm that collapses __eq__ nodes into each other while retaining adjacency, (this seems like an extant problem, I just don't know its name)
-# map nodes → (idx, nodes) where idx is the result of enumerating all nodes that end up in the same PHITS section, and write it all out.
+    | Name | Position | Description |
+    | ---- | -------- | ----------- |
+    | cells | 0 | A list of `PhitsObject`s with `name == "cell"`.|
+    | sources | 1 | Either a single `PhitsObject` with `name == "source"`, or a list of tuples (<source object>, <weight>).|
+    | tallies | 2 | A list of objects of type `DumpFluence`, `DumpProduction`, or `DumpTime`.|
 
-# The first algorithm is, actually, best implemented by creating an explicit graph, as anything I can think of is formally equivalent to that. However, it may be space-inefficient, as the adjacency data is represented twice.
-# The naïve algorithm is suboptimal: taking every node, and comparing it to every other node to construct the equivalence class explicitly is O(n^n), and doesn't use symmetry or transitivity to reduce the number of required comparisons.
+    Optional arguments:
 
-# Here's a better candidate algorithm: first, initialize an empty set (since we only need lookup and insertion we can get O(1) on average; the hash values are computed via the equivalence relation in question).
-# Iterate over the nodes of the graph; if the a node isn't in the set (i.e. is not equivalent to any in the set, since the hash bins are computed via __eq__), add it.
-# If a node is equivalent to one in the set, change all edges that end on the node to end instead on the one to which it is equivalent.
-# This is O(#nodes + connectivity)
+    | Name | Description |
+    | ---- | ----------- |
+    | title | A string to paste in the `[Title]` section. |
+    | parameters | Some globally-passed options, fed directly into a `Parameters` object. |
+    | cross_sections | A list of `FragData` objects. |
+    | raw | A string that's appended to the end of the .inp---do unsupported stuff manually with this.|
+    | kwargs | Anything extra is used to create a Parameters() object. |
+    """
 
-
-# sources is list of tuples of a Source value and a numeric weight, cells is a list of Cell values,
-# and
-
-def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=dict(), cross_sections=[], raw=""): # [Super Mirror], [Elastic Option], [Weight Window], and [WW Bias] aren't supported due to poor documentation.
-    """"""
+    # Problem: you can have different objects that are "essentially the same" appearing in the object tree.
+    # Solution: exploit the __eq__ and __hash__ defined on PhitsObject
     unique = set()
-
 
     def add_to_set(an_obj, the_set, prev=None):  # Recursively add subtypes to set if they represent an "entry" in one of the sections
         if isinstance(an_obj, col.Iterable):
             for ob in an_obj:
-                add_to_set(ob, the_set)
+                if isinstance(ob, PhitsObject) and ob is not prev:
+                    add_to_set(ob, the_set)
         if isinstance(an_obj, PhitsObject):
             the_set.add(an_obj)
             for name, child in an_obj.__dict__.items():
-                if isinstance(child, PhitsObject):
-                    the_set.add(child)
-                    if child is not prev:
-                        add_to_set(child, the_set, an_obj)
-
-
-
-
+                if child is not prev:
+                    add_to_set(child, the_set, an_obj)
 
     add_to_set(cells, unique)
-    for cell in cells: # TODO: this ideally should "just work." Every language should have ADTs
-        for sur in cell.regions:
-            add_to_set(sur, unique)
+    for cell in cells: # this ideally should "just work." Every language should have ADTs
+        if hasattr(cell, "regions"):
+            for sur in cell.regions:
+                add_to_set(sur, unique)
+
+    toset = OuterVoid([], **outer_void_properties)
+    toset.regions = (~reduce(lambda c1, c2: c1 | c2, cells)).regions
+    unique.add(toset)
+
     add_to_set(sources, unique)
     add_to_set(tallies, unique)
 
 
 
+    # We now have that if any two PHITS objects A and B have attributes C and D (respectively) such that C == D, C /is/ D.
 
 
-    # We now have that if any two PHITS objects A and B have a property C and D (respectively) such that C == D, C /is/ D.
-
-
-    # Now we break up the nodes by PHITS type; these objects will be translated into the .inp file directly in this order.
+    # Problem: before this function is invoked, we can't give objects an ID number by which they're referenced in the .inp---so
+    # they don't have IDs yet.
+    # Solution: put all the objects in an indexed structure; index + 1 := ID.
     type_divided = {"parameters": [],
                     "source": [],
                     "material": [],
@@ -90,12 +83,10 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
                     "temperature": [],
                     "mat_time_change": [],
                     "magnetic_field": [],
-                    "neutron_magnetic_field": [],
-                    "mapped_magnetic_field": [],
-                    "uniform_electromagnetic_field": [],
-                    "mapped_electromagnetic_field": [],
+                    "electromagnetic_field": [],
                     "delta_ray": [],
                     "track_structure": [],
+                    "super_mirror": [],
                     "importance": [],
                     "weight_window": [],
                     "ww_bias": [],
@@ -129,16 +120,20 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
                     # "t-rshow": [],
                     # "t-3dshow": []
                     }
-
+    if kwargs:
+        type_divided["parameters"].append(Parameters(**kwargs))
     for node in unique:
         type_divided[node.name].append(node)
 
 
     for section, entries in type_divided.items():
         for idx, value in enumerate(entries):
-            value.index = idx+1 # this allows us to access the position in which the value will appear if given value alone.
+            value.index = idx+1
 
-    representatives = {n: n for n in it.chain.from_iterable(type_divided.values())}
+    # Problem: while we've chosen a set of representatives for equivalence classes under PhitsObject.__eq__, the objects themselves
+    # don't have subobjects with index attributes pointing to the representative---there will be None showing up all over the output.
+    # Solution: replace all members of an equivalence class in the object tree with their representative (whose index is defined above).
+    representatives = {n: n for n in it.chain.from_iterable(type_divided.values())} # TODO: see if `for n in unique` works.
 
     def adjust_subobjects(an_obj, dic, prev=None): # Recursively replace redundant subtypes with the representative in the dict
         if isinstance(an_obj, tuple):
@@ -161,8 +156,7 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
     adjust_subobjects(tallies, representatives)
 
 
-
-
+    # Now, we can make the input file.
     inp = ""
     def add_defs(obj_type):
         nonlocal inp
@@ -170,16 +164,16 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
             if type_divided[obj_type]:
                 objs = type_divided[obj_type]
                 type_rep = objs[0]
-                if hasattr(type_rep, "group_by"):
+                if hasattr(type_rep, "group_by") and callable(type_rep.group_by):
                     grouped = it.groupby(sorted(objs, key=lambda x: x.group_by()), lambda x: x.group_by())
-                    if hasattr(type_rep, "max_groups"):
+                    if hasattr(type_rep, "max_groups") and type_rep.max_groups is not None:
                         assert len(list(grouped)) <= type_rep.max_groups, ValueError(f"Too many {obj_type} groups.")
                     for key, group in grouped:
                         group = list(group)
                         inp += group[0].separator()
                         gs = len(group)
                         for obj in group:
-                            setattr(obj, "group_size", gs)
+                            obj.group_size = gs
                         if hasattr(group[0], "prelude"):
                             inp += group[0].prelude_str()
                         for obj in group:
@@ -196,22 +190,22 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
     inp += "[Title]\n"
     inp += title + '\n'
 
-    if parameters or any(param.empty() for param in type_divided["parameters"]):
-        inp += "[Parameters]\n"
+    if parameters or any(not param.empty() for param in type_divided["parameters"]):
+        add_defs("parameters") # parameters associated with object declarations, but that need to be in this global context.
         for var, val in parameters.items(): # directly passed global parameters
-            if var not in {"totfact", "iscorr"}:
+            if var not in {"totfact", "iscorr"}: # TODO: document these two
                 inp += f"{var} = {val}\n"
 
-        add_defs("parameters") # parameters associated with object declarations, but that need to be in this global context
+
 
 
     inp += "[Source]\n"
     if "totfact" in parameters:
         val = parameters["totfact"]
-        inp += f"totfact = {val}"
+        inp += f"totfact = {val}\n"
     if "iscorr" in parameters:
         val = parameters["iscorr"]
-        inp += f"iscorr = {val}"
+        inp += f"iscorr = {val}\n"
 
     if isinstance(sources, col.Iterable):
         for source, weight in sources:
@@ -233,54 +227,21 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
     add_defs("mapped_electromagnetic_field")
     add_defs("delta_ray")
     add_defs("track_structure")
-
-    if cross_sections:
-        inp += "[Frag Data]\n"
-        inp += "opt proj targ file\n"
-        for dic in cross_sections:
-            opt = "opt"
-            proj = "proj"
-            targ = "targ"
-            filename = "file"
-            inp += f"{dic[opt]} {dic[proj]} {dic[targ]} {dic[filename]}\n"
-
-    if type_divided["importance"]:
-        if len(type_divided["importance"]) > 6:
-            raise ValueError("More than 6 [Importance] sections.")
-        for imps in it.groupby(type_divided["importance"], lambda imp: imp.particles):
-            inp += "[Importance]\n"
-            inp += f"part = {imps[0].particles}\n"
-            inp += "reg imp\n"
-            for imp in imps:
-                inp += f"{imp.cell.index} {imp.importance}\n"
-
-  # if type_divided["weight_window"]:
-  # if type_divided["ww_bias"]:
-
-    if type_divided["forced_collisions"]:
-        if len(type_divided["forced_collisions"]) > 6:
-            raise ValueError("More than 6 [Forced Collision] sections.")
-        for fcls in it.groupby(type_divided["forced_collisions"], lambda fcl: fcl.particles):
-            inp += "[Forced Collisions]\n"
-            inp += f"part = {fcls[0].particles}\n"
-            inp += "reg imp\n"
-            for fcl in fcls:
-                inp += f"{fcl.cell.index} {fcl.fcl}\n"
-
-  # if type_divided["repeated_collisions"]:
-  # if type_divided["multiplier"]:
-
+    add_defs("frag_data")
+    add_defs("importance")
+    add_defs("weight_window")
+    add_defs("ww_bias")
+    add_defs("forced_collisions")
+    add_defs("repeated_collisions")
+    # add_defs("multiplier") TODO: needs to be finished
     add_defs("mat_name_color")
     add_defs("reg_name")
-
-  # if type_divided["counter"]
-
+    add_defs("counter")
     add_defs("timer")
-
     add_defs("t-cross")
     add_defs("t-product")
     add_defs("t-time")
-    # ... more tallies, eventually?
+    # ... more tallies would require more complicated parsing of the output files
 
     inp += raw
 
@@ -289,40 +250,61 @@ def make_input(cells, sources, tallies, title=str(datetime.now()), parameters=di
 
 
 
+def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool = True, filename: str = "phits.inp",
+              return_type: str = "dict", **make_input_kwargs):
+    """Given a scenario, calls `make_input` to generate a corresponding input file, runs PHITS on it in a temporary directory,
+    and then collects and returns the resulting output as nice Python objects.
 
+    Required arguments:
 
-def run_phits(sources, cells, tallies, command="phits", error_stop=True, filename="phits.inp", return_type="dict", raw="", **kwargs):
-    # TODO: consider how to read stdout/output files into returnable formats
-    # WARNING: setting the command variable opens up shell injection attacks, as sp.run() with
-    # shell=True is done unfiltered. Should see about using shlex.quote() to sanitize, since title may be specified by the user
+    | Name | Position | Description |
+    | ---- | -------- | ----------- |
+    | `cells` | 0 | A list of `PhitsObject`s with `name == "cell"`.|
+    | `sources` | 1 | Either a single `PhitsObject` with `name == "source"`, or a list of tuples (<source object>, <weight>).|
+    | `tallies` | 2 | A list of objects of type `DumpFluence`, `DumpProduction`, or `DumpTime`.|
 
+    Optional arguments:
+
+    | Name | Description |
+    | ---- | ----------- |
+    | `command` | The shell command to invoke on the generated file. |
+    | `hard_error` | If truthy, raise an error and halt if PHITS encounters one. Otherwise, simply print the error and continue
+    (helpful in avoiding "I let it run all night and it crashed the minute I left the room" scenarios). |
+    | `filename` | The name of the input file on which to call PHITS. Of little utility except for debugging. |
+    | `return_type` | Either "dict", "numpy", or "pandas", corresponding to the desired result format. |
+    """
     with tf.TemporaryDirectory() as newdir:
-        inp = make_input(sources, cells, tallies, parameters=kwargs, raw=raw)
-        with open(f"{filename}", "w") as inp_file:
+        inp = make_input(cells, sources, tallies, **make_input_kwargs)
+        with open(os.path.join(newdir, filename), "w") as inp_file:
             inp_file.write(inp)
 
-        output = ""
         try:
-            sp.run(f"phits '{filename}'", shell=True, capture_output=True, text=True, check=True)
-
-        except sp.CalledProcessError as error:
-            r = f"PHITS exited with code {error.returncode}.\n"
-            r += f"output: {error.output}\n"
-            r += f"stdout: {error.stdout}\n"
-            r += f"stderr: {error.stderr}\n"
+            # TODO: PHITS actualy **DOESN'T FKING SET EXIT CODES ON ERROR** so will have to grep the output for "Error"...
+            out = sp.run(["phits", filename], capture_output=True, text=True, cwd=newdir)
+            assert not re.search("(?i:Error)", out.stdout), "PHITS Error." # this REALLY sucks. Thank PHITS.
+        except AssertionError as error:
+            r = f"PHITS exited with code {out.returncode}.\n"
+            r += f"stdout: {out.stdout}\n"
+            r += f"stderr: {out.stderr}\n"
             r += "Offending input file:\n"
-            r += inp
-            if error_stop:
+            for idx, line in enumerate(inp.split("\n")):
+                r += f"{idx}:    {line}\n"
+
+            if hard_error:
                 raise RuntimeError(r)
             else:
                 print(r)
 
+        result = dict()
+        for t in tallies:
+            dfile = newdir
+            if t.name == "t-cross":
+                dfile += f"cross{t.index}_dmp"
+            elif t.name == "t-product":
+                dfile += f"product{t.index}_dmp"
+            elif t.name == "t-time":
+                dfile += f"time{t.index}_dmp"
+            result[t] = read_dump(dfile, t.data, return_type)
 
-        # for t in tallies:
-        #     if t
 
         return result
-
-
-
-# def parse_input(file_handle) -> :#< tuple of all arguments of run_phits function>

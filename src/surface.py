@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from base import *
 from transform import *
 
@@ -19,7 +20,7 @@ class Plane(PhitsObject):
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", "P", "A", "B", "C", "D"))
+                           "transform", "P", "A", "B", "C", "D"),)
 
 
 # TODO: consider obliterating the next 2
@@ -35,7 +36,7 @@ class PointPlane(PhitsObject):
                            "transform", "P",
                            f"{self.p1[0]}", f"{self.p1[1]}", f"{self.p1[2]}",
                            f"{self.p2[0]}", f"{self.p2[1]}", f"{self.p2[2]}",
-                           f"{self.p3[0]}", f"{self.p3[1]}", f"{self.p3[2]}"))
+                           f"{self.p3[0]}", f"{self.p3[1]}", f"{self.p3[2]}"),)
 
 class ParallelPlane(PhitsObject):
     """A plane of the form x_i = D."""
@@ -45,7 +46,7 @@ class ParallelPlane(PhitsObject):
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", f"P{self.parallel}", "D"))
+                           "transform", f"P{self.parallel}", "D"),)
 
 
 class Sphere(PhitsObject):
@@ -57,7 +58,7 @@ class Sphere(PhitsObject):
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "SPH", f"{self.center[0]}", f"{self.center[1]}", f"{self.center[2]}" "R"))
+                           "SPH", f"{self.center[0]}", f"{self.center[1]}", f"{self.center[2]}", "radius"),)
 
 
 class Cylinder(PhitsObject):
@@ -70,7 +71,7 @@ class Cylinder(PhitsObject):
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "RCC", " ".join(self.center), " ".join(self.height), "radius"))
+                           "RCC", " ".join(self.center), " ".join(self.height), "radius"),)
 
 class Cone(PhitsObject):
     """A truncated right-angle cone with bottom-face center (x_0, y_0, z_0), height vector (H_x, H_y, H_z), and bottom and top radii
@@ -83,7 +84,7 @@ class Cone(PhitsObject):
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "TRC", " ".join(self.center), " ".join(self.height), "bottom_r", "top_r"))
+                           "TRC", " ".join(self.center), " ".join(self.height), "bottom_r", "top_r"),)
 
 
 class SimpleConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid parallel to an axis of the form
@@ -96,7 +97,7 @@ class SimpleConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid parallel
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", "SQ", "quadratic", "linear", "constant", "center"))
+                           "transform", "SQ", "quadratic", "linear", "constant", "center"),)
 
 
 
@@ -104,13 +105,13 @@ class GeneralConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid of the 
                     # A(x-x0)^2+B(y-y0)^2+C(z-z0)^2+Dxy+Eyz+Fzx+Gx+Hy+Jz+K = 0
     name = "surface"
     syntax = common | {"quadratic": ((None, None, None), (Real(), Real(), Real()), 0),
-                       "mixed": ((None, None, None), (Real(), Real(), Real()), 1)
+                       "mixed": ((None, None, None), (Real(), Real(), Real()), 1),
                        "linear": ((None, None, None), (Real(), Real(), Real()), 2),
                        "constant": (None, Real(), 2)}
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", "GQ", "quadratic", "mixed", "linear", "constant"))
+                           "transform", "GQ", "quadratic", "mixed", "linear", "constant"),)
 
 
 class Torus(PhitsObject): # torus parallel to an axis of the form
@@ -121,7 +122,7 @@ class Torus(PhitsObject): # torus parallel to an axis of the form
                        "scales": ((None, None, None), (Real(), Real(), Real()), 1)}
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", f"T{self.axis}", "center", "scales"))
+                           "transform", f"T{self.axis}", "center", "scales"),)
 
 
 
@@ -147,10 +148,10 @@ class HexagonalPrism(PhitsObject):
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
-                           "transform", "HEX", "base", "height", "s1", "s2", "s3"))
+                           "transform", "HEX", "base", "height", "s1", "s2", "s3"),)
 
 
-class ElipticalCylinder(PhitsObject):
+class EllipticalCylinder(PhitsObject):
     name = "surface"
     syntax = common | {"center": ((None, None, None), (Real(), Real(), Real()), 0),
                        "height": ((None, None, None), (Real(), Real(), Real()), 1),
@@ -195,3 +196,15 @@ class TetrahedronBox(PhitsObject):
     shape = ((lambda self: f"*{self.index}" if self.reflective else
               (f"+{self.index}" if self.white else f"{self.index}"),
               "transform", "RPP", "xrange", "yrange", "zrange"),)
+
+surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
+                 IsA(Sphere, index=True), IsA(Cylinder, index=True), IsA(Cone, index=True), IsA(SimpleConic, index=True),
+                 IsA(GeneralConic, index=True), IsA(Torus, index=True), IsA(Box, index=True), IsA(HexagonalPrism, index=True),
+                 IsA(EllipticalCylinder, index=True), IsA(Spheroid, index=True), IsA(Wedge, index=True), IsA(TetrahedronBox, index=True))
+
+__pdoc__ = dict()
+__pdoc__["builds"] = False
+__pdoc__["slices"] = False
+for name, cl in list(sys.modules[__name__].__dict__.items()):
+    if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
+        __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()

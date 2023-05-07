@@ -1,27 +1,38 @@
 from base import *
-from cell import *
+from cell import Cell
 import collections as col
 
 
-common = {"cells": ("reg", List(IsA(Cell, index=True)), 0),
+# common = {"cells": ("reg", List(IsA(Cell, index=True)), 0),
 
-          "particles": ("part", List(Particle()), None),
-          }
-# counters? std cutoff? bounds?
+#           "particles": ("part", List(Particle()), None),
+#           }
+# counters? multiplier?
 class DumpFluence(PhitsObject):
     name = "t-cross"
     syntax = {"out": (None, IsA(Cell, index=True), 0),
               "into": (None, IsA(Cell, index=True), 1),
               "area": (None, PosReal(), 2),
-              }
-    required = ["out", "into", "area", "data", "output_type"]
-    positional = ["out", "into", "area", "data", "output_type"]
-    optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
-    shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),)
-    prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
-               lambda self: f"reg = {self.group_size}", lambda self: f"dump = -{len(self.data)}",
-               lambda self: " ".join([str(i) for i in self.data]), ("r-out", "r-in", "'area"))
-    ident_map = {"particles": "part"}
+              "data": ("dump", List(FinBij({"particle": 1, "x": 2, "y": 3, "z": 4, "u": 5, "v": 6, "w": 7, "energy": 8, "weight": 9,
+                                            "time": 10, "counter1": 11, "counter2": 12, "counter3": 13, "spinx": 14, "spiny": 15,
+                                            "spinz": 16, "collision_number": 17, "history_number": 18, "batch_number": 19,
+                                            "cascade_id": 20})), 3),
+              "output": ("output", FinBij({"current": "current", "a_current": "a-curr", "oa_current": "oa-curr"}), 4),
+              "particles": ("part", List(Particle()), None),
+              "factor": ("factor", PosReal(), None),
+              "maximum_error": ("stdcut", PosReal(), None),
+              "energy_bounds": ((None, None), (PosReal(), PosReal()), None),
+              "angle_bounds": ((None, None), (PosReal(), PosReal()), None),
+              "angle_semantics": ("iangform", FinBij({"to_normal": 0, "to_x": 1, "to_y": 2, "to_z": 3}), None),
+              "time_bounds": ((None, None), (PosReal(), PosReal()), None)}
+
+    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = cross{self.index}", "factor", "output_type",
+                            f"dump = -{len(self.data)}", " ".join([str(i) for i in self.data]),
+                            "mesh = reg", f"reg = {self.group_size}",
+                            ("r-from", "r-to", "'area"))
+
+    shape = lambda self: ((f"{self.out.index}", f"{self.into.index}", "area"),)
+
     group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
                              self.time_bounds)
     separator = lambda self: self.section_title()

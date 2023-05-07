@@ -1,3 +1,5 @@
+"""A simple factory for PHITS types."""
+
 from valspec import *
 import re
 
@@ -5,32 +7,30 @@ __pdoc__ = dict()
 __pdoc__["builds"] = False
 __pdoc__["slices"] = False
 
-test = 1
-"""
-do   | tables
-- | ---
-even | work
-"""
 
+
+# TODO: move this into run_phits.py
 def _continue_lines(inp: str) -> str:
     """If a line is too long for PHITS to handle, use PHITS's line continuation syntax to fix it."""
     r = ""
-    length = 0
-    last_whitespace = 0
-    for i, char in enumerate(inp):
-        if char.isspace():
-            last_whitespace = i
-        if length < 195:
-            if char == "\n":
-                length = 0
-            r += char
-            length += 1
-        else:
-            r = r[:last_whitespace] + " \\\n     " + r[last_whitespace:i] + char + r[i:]
-            length = 0
+    for line in inp.split("\n"):
+        if len(line) > 195:
+            line = line[:195]
 
+            line2 = "     " + line[195:]
+            if line2.isspace():
+                r += line + "\n"
+            else:
+                r += line + "\\\n" + _continue_lines(line2)
+        else:
+            r += line + "\n"
+
+            
     return r
 
+
+def _tuplify(xs: list) -> tuple:
+    return tuple(map(lambda x: _tuplify(x) if isinstance(x, list) else x, xs))
 
 # Configuration options
 readable_remapping = True
@@ -40,6 +40,7 @@ readable_remapping = True
    If `False`, use a syntax as close as possible to that specified in the PHITS manual (i.e., the latter form in the above example).
    Note that some identifiers in PHITS do not conform to Python's identifier syntax (e.g. 2d-type, emin(14));
    these identifiers are sanitized as follows:
+
        - dashes -> underscores
        - beginning with a number -> that clause moved to the end
        - parentheses -> omitted"""
@@ -83,12 +84,12 @@ class PhitsObject:
     index = None
     """The compile-time assigned number of an object. Should not be set directly."""
 
-    no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
-               "group_by", "separator", "prelude", "max_groups", "group_size", "parser", "validator"}
-    """Attributes that don't affect the identity of a PhitsObject."""
+    # no_hash = {"index", "value_map", "ident_map", "nones", "shape", "subobjects", "required", "positional", "optional",
+    #            "group_by", "separator", "prelude", "max_groups", "group_size", "parser", "validator"}
+    # """Attributes that don't affect the identity of a PhitsObject."""
 
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
-             "neutron_magnetic_field", "mapped_magnetic_field", "uniform_electromagnetic_field", "mapped_electromagnetic_field",
+             "electromagnetic_field",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
              "forced_collisions", "repeated_collisions", "volume", "multiplier", "mat_name_color", "reg_name", "counter", "timer",
              "t-track", "t-cross", "t-point", "t-adjoint", "t-deposit", "t-deposit2", "t-heat", "t-yield", "t-product", "t-dpa",
@@ -108,56 +109,102 @@ class PhitsObject:
 
     prelude = tuple()
     """A skeleton just like `PhitsObject.shape`, but inserted before all definitions of the `PhitsObject` subclass in question."""
+    subobjects = []
+    """A list of all `PhitsObject.name`s that can appear as attributes of the object in question."""
+    superobjects = []
+    """A list of all `PhitsObject.name`s that this object ought to be defined from."""
+    restrictions = lambda self: tuple()
+    """A tuple of additional properties to check after initialization"""
     def __init__(self, *args,  **kwargs):
         """Arguments are interpreted according to `PhitsObject.syntax`, and then any leftovers in `kwargs` are used to create a `Parameters`
         object, which is then assigned to a `parameters` attribute."""
         assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
+
+        # Handle required args
         required = list(map(lambda tup: tup[0],
                             sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
         assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
         for idx, arg in enumerate(args):
-            setattr(self, required[idx], arg if not isinstance(arg, list) else tuple(arg))
-
-        for arg in self.syntax:
-            if arg in kwargs:
-                setattr(self, arg, kwargs[arg] if not isinstance(arg, list) else tuple(arg))
+            # Validate first
+            details = self.syntax[required[idx]]
+            valspec = details[1]
+            if isinstance(valspec, tuple):
+                for id2, spec in enumerate(valspec):
+                    mapped = spec.phits(arg[id2])
+                    if callable(mapped):
+                        raise mapped(required[idx])
             else:
-                setattr(self, arg, None)
+                mapped = valspec.phits(arg)
+                if callable(mapped):
+                    raise mapped(required[idx])
 
-        # TODO: reconsider
+            # Then set the attribute
+            setattr(self, required[idx], arg if not isinstance(arg, list) else _tuplify(arg))
+
+        # Handle optional args
+        for arg in self.syntax:
+            valspec, position = self.syntax[arg][1], self.syntax[arg][2]
+            if position == None:
+                if arg in kwargs:
+                    # Validate first
+                    if kwargs[arg] is not None:
+                        if isinstance(valspec, tuple):
+                            for idx, spec in enumerate(valspec):
+                                mapped = spec.phits(kwargs[arg][idx])
+                                if callable(mapped):
+                                    raise mapped(arg)
+                        else:
+                            mapped = valspec.phits(kwargs[arg])
+                            if callable(mapped):
+                                raise mapped(arg)
+
+                        # Then set the attribute
+                        setattr(self, arg, kwargs[arg] if not isinstance(kwargs[arg], list) else _tuplify(kwargs[arg]))
+                    else:
+                        setattr(self, arg, None)
+                else:
+                    # Handle unpassed
+                    setattr(self, arg, None)
+
+
         for attr in self.subobjects:
-            child = getattr(self, attr)
-            if hasattr(child, self.name):
-                val = getattr(child, self.name)
-                if val is None:
+            if hasattr(self, attr):
+                child = getattr(self, attr)
+                if child is not None:
                     setattr(child, self.name, self)
 
-        remaining = {k: v for k, v in kwargs.items() if k not in self.syntax}
+        # for attr in self.superobjects:
+        #     setattr(self, attr, None) # subobjects are instantiated before superobjects
+
+        remaining = {k: v for k, v in kwargs.items() if k not in self.syntax and k not in self.subobjects}
         if remaining:
             self.parameters = Parameters(**remaining)
 
-
+        # check restrictions satisfied
+        self.restrictions()
 
     def _add_definition(self, how: tuple, to: str, assignments: bool = True) -> str:
         """Recursively performs skeleton insertions according to `how` at the end of `to`."""
         if callable(how):
-            how = how(self)
+            how = how()
 
         for attr in how:
-            if isinstance(attr, str) and attr[0] == "'":
-                to += attr[1:]
-                return to
 
             endstr = "\n" if assignments else " "
             spacing = " "
 
-            if isinstance(attr, str) and attr[-1] == "\\":
+            if isinstance(attr, str) and len(attr) > 0 and attr[0] == "'":
+                to += attr[1:]
+                to += endstr
+                continue
+
+            if isinstance(attr, str) and len(attr) > 0 and attr[-1] == "\\":
                 endstr = " "
                 spacing = ""
                 attr = attr[:-1]
 
             if isinstance(attr, tuple):
-                to += self.add_definition(attr, to, assignments=False)
+                to += self._add_definition(attr, "", assignments=False)
                 if attr[-1] == "\\":
                     to += " "
                 else:
@@ -168,21 +215,35 @@ class PhitsObject:
                 phits_iden = self.syntax[attr][0]
                 valspec = self.syntax[attr][1]
                 noneval = ""
-                if len(self.synatx[attr]) == 4:
+                if len(self.syntax[attr]) == 4:
                     noneval = self.syntax[attr][3]
 
                 if val is not None:
                     if isinstance(phits_iden, tuple):
                         for i, (phits, spec) in enumerate(zip(phits_iden, valspec)):
                             assign = f"{phits}{spacing}={spacing}" if assignments else ""
-                            to += f"{assign}{spec.phits(val[i])}{endstr}"
+                            v = spec.phits(val[i])
+                            if callable(v):
+                                raise v(attr)
+                            else:
+                                to += f"{assign}{v}{endstr}"
                     else:
                         assign = f"{phits_iden}{spacing}={spacing}" if assignments else ""
-                        to += f"{assign}{valspec.phits(val)}{endstr}"
+                        v = valspec.phits(val)
+                        if callable(v):
+                            raise v(attr)
+                        else:
+                            to += f"{assign}{v}{endstr}"
+                # elif noneval != TODO: nones
+
 
             else:
                 if attr == "self":
-                    to += self.index
+                    to += str(self.index)
+                    to += endstr
+
+                elif attr in self.superobjects: # can't use syntax because impredicativity in module imports
+                    to += str(getattr(self, attr).index)
                     to += endstr
                 else:
                     to += attr
@@ -191,13 +252,13 @@ class PhitsObject:
 
     def prelude_str(self) -> str:
         """Return a string to appear before the collection of all definitions of subclass instances in an `.inp` file."""
-        inp = self.add_definition(self.prelude, "")
+        inp = self._add_definition(self.prelude, "")
 
         return _continue_lines(inp)
 
     def definition(self) -> str:
         """Return the string representing the particular PhitsObject in an `.inp` file."""
-        inp = self.add_definition(self.shape, "")
+        inp = self._add_definition(self.shape, "")
 
         return _continue_lines(inp)
 
@@ -213,19 +274,29 @@ class PhitsObject:
         required = sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])
         opt = [(k, v) for k, v in self.syntax.items() if v[2] is None]
         r = ""
-        if required:
-            r = "Required arguments:\nPHITS name|Accepted value\n----|----\n"
-            for py_attr, (phits_attr, valspec, position) in required:
-                r += f"{phits_attr}|{valspec.description()}\n"
+        def capfirst(st):
+            return st[0].upper() + st[1:]
 
-        if opt:
-            r += "Optional arguments:\nPython name|PHITS name|Accepted value\n----|----|----\n"
-            for py_attr, (phits_attr, valspec, position) in opt:
+        if required:
+            r = "Required arguments:\n\n|Position|Python name|PHITS name|Accepted value|\n|----|----|----|----|\n"
+            for py_attr, (phits_attr, valspec, position, *s) in required:
+
                 if isinstance(valspec, tuple):
                     j = ", "
-                    r += f"`{py_attr}`|`{phits_attr}`|A tuple ({j.join(map(lambda x: x.description().capitalize(), valspec))}).\n"
+                    r += f"|{position}|`{py_attr}`|`{phits_attr}`|A tuple ({j.join(map(lambda x: x.description(), valspec))}).|\n"
                 else:
-                    r += f"`{py_attr}`|`{phits_attr}`|{valspec.description().capitalize()}.\n"
+
+                    r += f"|{position}|`{py_attr}`|`{phits_attr}`|{capfirst(valspec.description())}.|\n"
+
+        if opt:
+            r += "\nOptional arguments:\n\n|Python name|PHITS name|Accepted value|\n|----|----|----|\n"
+            for py_attr, (phits_attr, valspec, position, *s) in opt:
+                if isinstance(valspec, tuple):
+                    j = ", "
+                    r += f"|`{py_attr}`|`{phits_attr}`|A tuple ({j.join(map(lambda x: x.description(), valspec))}).|\n"
+                else:
+
+                    r += f"|`{py_attr}`|`{phits_attr}`|{capfirst(valspec.description())}.|\n"
         return r
 
 
@@ -255,11 +326,15 @@ class PhitsObject:
         if type(self) != type(other):
             return False
         elif hasattr(self, "__dict__") and hasattr(other, "__dict__"):
-            d1 = {k: v for k, v in self.__dict__.items() if k not in self.no_hash}
-            d2 = {k: v for k, v in other.__dict__.items() if k not in self.no_hash}
+            d1 = {k: v for k, v in self.__dict__.items() if k in self.syntax}
+            d2 = {k: v for k, v in other.__dict__.items() if k in self.syntax}
             return d1 == d2
 
     def __hash__(self) -> int:
         """PhitsObjects have the hash of their identity-defining attributes."""
-        return hash(tuple(v for k, v in sorted(self.__dict__.items()) \
-                          if (self not in v.__dict__.values() if hasattr(v, "__dict__") else True) and k not in self.no_hash))
+        return hash(tuple(v for k, v in sorted(self.__dict__.items())
+                          if k in self.syntax and (self not in v.__dict__.values() if hasattr(v, "__dict__") else True)))
+
+    def _repr_pretty_(self, p, cycle) -> str:
+        """Hypothesis uses this when printing failing cases."""
+        p.text(str(self.__dict__) + "\n\n" + self.definition())

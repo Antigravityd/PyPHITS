@@ -1,5 +1,8 @@
-from base import *
+"""A dumping ground for top-level control parameters."""
 
+
+from base import *
+import sys
 
 
 
@@ -20,7 +23,7 @@ class Parameters(PhitsObject):
               "max_batches": ("maxbch", PosInt(), None),
               "nuclear_memory_rescale": ("xsmemory", PosReal(), None),
               "timeout": ("timeout", NegDisable(), None),
-              "stdev_control": ("istdev", FinBij({-2: "history_restart", -1: "batch_restart", 0: "normal", 1: "batch", 2: "history"}), None),
+              "stdev_control": ("istdev", FinBij({"history_restart": -2, "batch_restart": -1, "normal": 0, "batch": 1, "history": 2}), None),
               "share_tallies": ("italsh", Choice10(), None),
               "check_consistency": ("ireschk", Choice10(c_style=True), None),
               "xor_prng": ("nrandgen", Choice10(), None),
@@ -282,12 +285,28 @@ class Parameters(PhitsObject):
     def definition(self):
         inp = ""
         for var, val in  self.__dict__.items():
-            if var != "name":
-                inp += f"{var} = {val}\n"
-
+            if val is not None:
+                if var in self.syntax:
+                    phits_iden, valspec = self.syntax[var][0], self.syntax[var][1]
+                    if isinstance(valspec, tuple):
+                        for idx, spec in enumerate(valspec):
+                            mapped = spec.phits(val[idx])
+                            if callable(mapped):
+                                raise mapped(var)
+                            else:
+                                inp += f"{phits_iden[idx]} = {mapped}\n"
+                    else:
+                        mapped = valspec.phits(val)
+                        if callable(mapped):
+                            raise mapped(var)
+                        else:
+                            inp += f"{phits_iden} = {mapped}\n"
         return inp
+
 
 __pdoc__ = dict()
 __pdoc__["builds"] = False
 __pdoc__["slices"] = False
-__pdoc__["Parameters"] = Parameters.__doc__ + Parameters.syntax_desc()
+for name, cl in list(sys.modules[__name__].__dict__.items()):
+    if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
+        __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()

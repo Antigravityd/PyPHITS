@@ -1,28 +1,28 @@
 from fortranformat import FortranRecordReader
+from pandas import DataFrame
+from valspec import elements, kf_decode
 
-
-# Read in an ASCII dump file produced by a PHITS tally
-def kf_decode(n):
-    simple = {2212: "proton", 2112: "neutron", 211: "pion+", 111: "pion0", -211: "pion-", -13: "muon+", 13: "muon-",
-              321: "kaon+", 311: "kaon0", -321: "kaon-", 11: "electron", -11: "positron", 22: "photon",
-              1000002: "deuteron", 1000003: "triton", 2000003: "3He", 2000004: "alpha"}
-    if n in simple:
-        return simple[n]
-    elif n > 1000000:
-        a = int(str(n)[:5])
-        z = (n - a) / 1000000
-    else:
-        # "other particle"
-        return "wacky"
-
-
-def read_dump(name, columns):
-    rd = FortranRecordReader('(30(1p1e24.15))')
+def read_dump(name: str, columns: list[str], return_type: str) -> dict:
+    """Given a path to a PHITS dump file and names of the record entries in order,
+    produce a semantically equivalent dictionary of lists/numpy array/Pandas dataframe of the contents."""
+    rd = FortranRecordReader('(30(1p1d24.15))') # PHITS documentation says e, but code says d---latter is consistent with behavior
     acc = dict.fromkeys(columns)
     with open(name, 'r') as dmp:
         for line in dmp:
             for i, val in enumerate(rd.read(line)):
                 if val is not None:
-                    acc[col[i]] = val
+                    col = columns[i]
+                    if acc[col] is None:
+                        acc[col] = [val if col != "particle" else kf_decode(val)]
+                    else:
+                        acc[col] += val if col != "particle" else kf_decode(val)
+
+    if return_type == "dict":
+        return acc
+    elif return_type == "numpy":
+        return np.fromiter(acc.items())
+    elif return_type == "pandas":
+        return DataFrame.from_dict(acc)
+
 
     return acc

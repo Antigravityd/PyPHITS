@@ -1,25 +1,19 @@
-# Sources will be specified by an iterable whose elements are a tuple  (Source(), weight) where the last two are optional.
-# totfact and iscorr may be specified in the general parameters section.
+"""Regions of space that emit particles."""
 
-# Currently, no a-type mesh support for the elevation angles.
+
+import sys
 from base import *
-# from cell import Cell
 from transform import Transform
-
-# Sources will be specified by an iterable whose elements are a tuple  (Source(), weight) where the last two are optional.
-# totfact and iscorr may be specified in the general parameters section.
-
-# Currently, no a-type mesh support for the elevation angles.
-from base import *
 from valspec import *
 from distribution import *
-
+from cell import Cell
 # TODO: global scaling factor totfact, and correlation option iscorr. Something with group_by?
 
-common = {"projectile": ("proj", FinBij({"proton": 2212}), 0), # TODO: make an actual Particles() valspec2
+# removed from projectile spec: FinBij({"all": "all"})
+common = {"projectile": ("proj", List(OneOf(Particle(), Nuclide())), 0),
           "spin": (("sx", "sy", "sz"), (PosReal(), PosReal(), PosReal()), None),
-          # "mask": (("reg", "ntmax"), (IsA(Cell, index=True), PosInt()), None),
-          # "transform": ("trcl", IsA(Transform, index=True), None),
+          "mask": (("reg", "ntmax"), (IsA(Cell, index=True), PosInt()), None),
+          "transform": ("trcl", IsA(Transform, index=True), None),
           "weight": ("wgt", PosReal(), None),
           "charge_override": ("izst", PosReal(), None),
           "counter_start": (("cnt(1)", "cnt(2)", "cnt(3)"), (PosInt(), PosInt(), PosInt()), None),
@@ -27,11 +21,11 @@ common = {"projectile": ("proj", FinBij({"proton": 2212}), 0), # TODO: make an a
           # ibatch?
           }
 
-semi_common = {"elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None),
+semi_common = {"elevation": ("dir", OneOf(RealBetween(0.0, 1.0), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None),
                "azimuth": ("phi", PosReal(), None),
                "dispersion": ("dom", OneOf(PosReal(), FinBij({"cos^2": -1})), None),
                # "energy": ("e0", PosReal(), 1), unsupported; just use a uniform energy distribution
-               "spectrum": ("e-type", IsA(EnergyDistribution), 1)}
+               "spectrum": (None, IsA(EnergyDistribution), 1)}
 
 
 
@@ -43,7 +37,7 @@ class Cylindrical(PhitsObject):
                         "cutout_radius": ("r1", PosReal(), None)} | semi_common
 
     shape=("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start",
-           "fissile", "center", "zbounds", "radius", "cutout_radius", "elevation", "azimuth", "dispersion", "spectrum")
+           "fissile", "center", "zbounds", "radius", "cutout_radius", "elevation", "azimuth", "dispersion", ("spectrum",))
 
 
 class Rectangular(PhitsObject):
@@ -53,21 +47,20 @@ class Rectangular(PhitsObject):
                         "zbounds": (("x0", "x1"), (Real(), Real()))} | semi_common
 
     shape=("s-type = 2", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start"
-           "fissile", "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion", "spectrum")
+           "fissile", "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion", ("spectrum",))
 
 
 
-
-
-
-
+# TODO: update with correct dir definition
 class Gaussian(PhitsObject):
     name = "source"
     syntax = common | {"center": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
                        "fwhms": (("x1", "y1", "z1"), (PosReal(), PosReal(), PosReal()), None)} | semi_common
 
-    shape = ("s-type = 3", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-                  "charge_override", "fissile", "center", "fwhms", "elevation", "azimuth", "dispersion", "spectrum")
+    shape = lambda self: ("s-type = 3", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "center", "fwhms",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                          else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
 class GaussianPrism(PhitsObject):
     name = "source"
@@ -75,8 +68,10 @@ class GaussianPrism(PhitsObject):
                        "fwhm": ("r1", PosReal(), None),
                        "zbounds": (("z0", "z1"), (Real(), Real()), None)} | semi_common
 
-    shape = ("s-type = 13", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-                  "charge_override", "fissile", "center", "fwhm", "zbounds", "elevation", "azimuth", "dispersion", "spectrum")
+    shape = lambda self: ("s-type = 13", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "center", "fwhms", "zbounds",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                          else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
 
 
@@ -89,8 +84,8 @@ class Parabolic(PhitsObject):
                        "zbounds": (("z0", "z1"), (Real(), Real()), None),
                        "order": ("rn", Integer(), None)} | semi_common
     shape = ("s-type = 7", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-                  "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-                  "dispersion", "spectrum")
+             "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
+             "dispersion", ("spectrum",))
 
 # The difference between these two in the manual is...sus
 class ParabolicPrism(PhitsObject):
@@ -101,21 +96,23 @@ class ParabolicPrism(PhitsObject):
                        "order": ("rn", Integer(), None)} | semi_common
     shape = ("s-type = 15", "projectile", "spin", "mask", "transform", "weight", "counter_start",
                   "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-                  "dispersion", "spectrum")
+                  "dispersion", ("spectrum",))
 
 
-
+# dir = iso not supported
 class Spherical(PhitsObject):
     name = "source"
     syntax = common | {"center": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
                        "r_in": ("r1", Real(), None),
                        "r_out": ("r2", Real(), None),
-                       "elevation_bounds": (("ag1", "ag2"), (Real(), Real()), None),
-                       "azimuth_bounds": (("pg1", "pg2"), (Real(), Real()), None),
-                       "resample_cutoff": ("isbias", Choice10(), None)} | semi_common
+                       # "elevation_bounds": (("ag1", "ag2"), (Real(), Real()), None),
+                       # "azimuth_bounds": (("pg1", "pg2"), (Real(), Real()), None),
+                       "elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None),
+                       "resample_cutoff": ("isbias", Choice10(), None),
+                       "spectrum": (None, IsA(EnergyDistribution), 1)}
     shape = ("s-type = 9", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-           "charge_override", "fissile", "center", "r_in", "r_out", "direction", "elevation_bounds",
-           "azimuth_bounds", "resample_cutoff", "spectrum")
+             "charge_override", "fissile", "center", "r_in", "r_out", "elevation", "resample_cutoff", ("spectrum",))
+
 
 
 class Beam(PhitsObject): # I don't understand what this is trying to do
@@ -129,12 +126,11 @@ class Beam(PhitsObject): # I don't understand what this is trying to do
                        "angle_dispersion": (("xmrad1", "ymrad1"), (PosReal(), PosReal()), None),
                        "phase_center": (("x2", "y2"), (Real(), Real()), None),
                        "phase_angle_center": (("xmrad2", "ymrad2"), (Real(), Real()), None),
-                       "positive": ("dir", Choice10(true=1, false=-1), None),
-                       "spectrum": ("e-type", IsA(EnergyDistribution), 1)}
+                       "positive": ("dir", Choice10(true=1, false=-1), None)}
 
     shape = ("s-type = 11", "projectile", "spin", "mask", "transform", "weight", "counter_start",
              "charge_override", "fissile", "center", "eccentricity", "zbounds", "phase_gradients", "sampling", "dispersion",
-             "angle_dispersion", "phase_center", "phase_angle_center", "positive", "spectrum")
+             "angle_dispersion", "phase_center", "phase_angle_center", "positive", ("spectrum",))
 
 
 # decay-turtle??????
@@ -148,7 +144,7 @@ class Conical(PhitsObject):
                        "angle": ("r2", PosReal(), None)} | semi_common
     shape = ("s-type = 18", "projectile", "spin", "mask", "transform", "weight", "counter_start",
              "charge_override", "fissile", "top", "altitude", "trim", "angle", "elevation", "azimuth",
-             "dispersion", "spectrum")
+             "dispersion", ("spectrum",))
 
 
 
@@ -161,7 +157,7 @@ class TrianglePrism(PhitsObject):
                        "attenuation": ("exa", PosReal(), None)} | semi_common
     shape = ("s-type = 20", "projectile", "spin", "mask", "transform", "weight", "counter_start",
              "charge_override", "fissile", "origin", "side1", "side2", "extrusion", "attenuation", "elevation", "azimuth",
-             "dispersion", "spectrum")
+             "dispersion", ("spectrum",))
 
 
 
@@ -206,3 +202,10 @@ class TrianglePrism(PhitsObject):
 #     positional = ["wall", "dl0", "dl1", "dl2", "dpf", "drd"]
 #     optional = ["dxw", "dyw"]
 #     def __init__(self, *args, **kwargs):
+
+__pdoc__ = dict()
+__pdoc__["builds"] = False
+__pdoc__["slices"] = False
+for name, cl in list(sys.modules[__name__].__dict__.items()):
+    if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
+        __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()
