@@ -2,6 +2,8 @@
 
 from valspec import *
 import re
+import itertools as it
+from parameters import Parameters
 
 __pdoc__ = dict()
 __pdoc__["builds"] = False
@@ -9,28 +11,32 @@ __pdoc__["slices"] = False
 
 
 
-# TODO: move this into run_phits.py
-def _continue_lines(inp: str) -> str:
-    """If a line is too long for PHITS to handle, use PHITS's line continuation syntax to fix it."""
-    r = ""
-    for line in inp.split("\n"):
-        if len(line) > 195:
-            line = line[:195]
-
-            line2 = "     " + line[195:]
-            if line2.isspace():
-                r += line + "\n"
-            else:
-                r += line + "\\\n" + _continue_lines(line2)
-        else:
-            r += line + "\n"
-
-            
-    return r
-
 
 def _tuplify(xs: list) -> tuple:
     return tuple(map(lambda x: _tuplify(x) if isinstance(x, list) else x, xs))
+
+def _continue_lines(inp: str) -> str:
+    """If a line is too long for PHITS to handle, attempt to line-break at whitespace.
+    Works only for [Surface] and [Cell]."""
+    r = ""
+    for line in inp.split("\n"):
+        if len(line) > 175:
+            words = line.split(" ")
+            length = 0
+
+            remain = list(it.takewhile(lambda x: len(x[1]) < 175, enumerate(it.accumulate(words, lambda x, y: x + " " + y))))
+            contin = " ".join(words[remain[-1][0]:])
+            remain = remain[-1][1]
+            if contin == "" or contin.isspace():
+                r += remain + "\n"
+            else:
+                r += remain + "\n     " + _continue_lines(contin)
+        else:
+            r += line + "\n"
+
+
+    return r
+
 
 # Configuration options
 readable_remapping = True
@@ -89,7 +95,7 @@ class PhitsObject:
     # """Attributes that don't affect the identity of a PhitsObject."""
 
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
-             "electromagnetic_field",
+             "electromagnetic_field", "frag_data",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
              "forced_collisions", "repeated_collisions", "volume", "multiplier", "mat_name_color", "reg_name", "counter", "timer",
              "t-track", "t-cross", "t-point", "t-adjoint", "t-deposit", "t-deposit2", "t-heat", "t-yield", "t-product", "t-dpa",
@@ -123,6 +129,8 @@ class PhitsObject:
         # Handle required args
         required = list(map(lambda tup: tup[0],
                             sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
+        if type(self).__name__ == 'EnergyDistribution' and len(args) != len(required):
+            breakpoint()
         assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
         for idx, arg in enumerate(args):
             # Validate first
@@ -215,7 +223,7 @@ class PhitsObject:
                 phits_iden = self.syntax[attr][0]
                 valspec = self.syntax[attr][1]
                 noneval = ""
-                if len(self.syntax[attr]) == 4:
+                if len(self.syntax[attr]) > 3:
                     noneval = self.syntax[attr][3]
 
                 if val is not None:
@@ -234,7 +242,10 @@ class PhitsObject:
                             raise v(attr)
                         else:
                             to += f"{assign}{v}{endstr}"
-                # elif noneval != TODO: nones
+
+                elif noneval != "" and noneval is not None: # I think we don't use nones for anything except the simplest case
+                    to += str(noneval)
+                    to += endstr
 
 
             else:
@@ -254,13 +265,15 @@ class PhitsObject:
         """Return a string to appear before the collection of all definitions of subclass instances in an `.inp` file."""
         inp = self._add_definition(self.prelude, "")
 
-        return _continue_lines(inp)
+        return inp
 
     def definition(self) -> str:
         """Return the string representing the particular PhitsObject in an `.inp` file."""
         inp = self._add_definition(self.shape, "")
-
-        return _continue_lines(inp)
+        if self.name in ["surface", "cell"]:
+            return _continue_lines(inp)
+        else:
+            return inp
 
     def section_title(self) -> str:
         """Return the section title under which a PhitsObject belongs."""
@@ -337,4 +350,7 @@ class PhitsObject:
 
     def _repr_pretty_(self, p, cycle) -> str:
         """Hypothesis uses this when printing failing cases."""
-        p.text(str(self.__dict__) + "\n\n" + self.definition())
+        try:
+            p.text(str(self.__dict__) + "\n\n" + self.definition())
+        except:
+            p.text(str(self.__dict__))

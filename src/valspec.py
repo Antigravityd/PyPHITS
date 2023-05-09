@@ -73,7 +73,7 @@ class Integer(ValSpec):
 
 class Real(ValSpec):
     def __init__(self):
-        super().__init__(floats(allow_nan=False, allow_infinity=False, allow_subnormal=False))
+        super().__init__(floats(allow_nan=False, allow_infinity=False, allow_subnormal=False, width=16))
     def phits(self, val):
         if isinstance(val, float) or isinstance(val, int):
             return float(val)
@@ -108,7 +108,8 @@ class PosInt(ValSpec):
 
 class PosReal(ValSpec):
     def __init__(self):
-        super().__init__(floats(min_value=0, exclude_min=True, allow_nan=False, allow_infinity=False, allow_subnormal=False))
+        super().__init__(floats(min_value=0, exclude_min=True, allow_nan=False, allow_infinity=False, allow_subnormal=False,
+                                width=16))
     def phits(self, val):
         if (isinstance(val, float) or isinstance(val, int)) and val > 0:
             return float(val)
@@ -130,7 +131,7 @@ class PosReal(ValSpec):
 class NegDisable(ValSpec):
     def __init__(self):
         super().__init__(one_of(none(), integers(min_value=0), floats(min_value=0, allow_nan=False, allow_infinity=False,
-                                                                      allow_subnormal=False)))
+                                                                      allow_subnormal=False, width=16)))
     def phits(self, val):
         if isinstance(val, float) or isinstance(val, int) and val >= 0:
             return val
@@ -150,7 +151,8 @@ class NegDisable(ValSpec):
 
 class RealBetween(ValSpec):
     def __init__(self, start, stop):
-        super().__init__(floats(min_value=start, max_value=stop, allow_nan=False, allow_infinity=False, allow_subnormal=False))
+        super().__init__(floats(min_value=start, max_value=stop, allow_nan=False, allow_infinity=False, allow_subnormal=False,
+                                width=16))
         self.start = start
         self.stop = stop
 
@@ -344,33 +346,163 @@ class OneOf(ValSpec):
     def description(self):
         return "either " + ", ".join(map(lambda x: x.description(), self.choices[:-1])) + ", or " + self.choices[-1].description()
 
-elements = {1: ("H", "Hydrogen"), 2: ("He", "Helium"), 3: ("Li", "Lithium"), 4: ("Be", "Beryllium"), 5: ("B", "Boron"),
-            6: ("C", "Carbon"), 7: ("N", "Nitrogen"), 8: ("O", "Oxygen"), 9: ("F", "Fluorine"), 10: ("Ne", "Neon"),
-            11: ("Na", "Sodium"), 12: ("Mg", "Magnesium"), 13: ("Al", "Aluminum"), 14: ("Si", "Silicon"),
-            15: ("P", "Phosphorus"), 16: ("S", "Sulfur"), 17: ("Cl", "Chlorine"), 18: ("Ar", "Argon"), 19: ("K", "Potassium"),
-            20: ("Ca", "Calcium"), 21: ("Sc", "Scandium"), 22: ("Ti", "Titanium"), 23: ("V", "Vanadium"),
-            24: ("Cr", "Chromium"), 25: ("Mn", "Manganese"), 26: ("Fe", "Iron"), 27: ("Co", "Cobalt"), 28: ("Ni", "Nickel"),
-            29: ("Cu", "Copper"), 30: ("Zn", "Zinc"), 31: ("Ga", "Gallium"), 32: ("Ge", "Germanium"), 33: ("As", "Arsenic"),
-            34: ("Se", "Selenium"), 35: ("Br", "Bromine"), 36: ("Kr", "Krypton"), 37: ("Rb", "Rubidium"),
-            38: ("Sr", "Strontium"), 39: ("Y", "Yttrium"), 40: ("Zr", "Zirconium"), 41: ("Nb", "Niobium"),
-            42: ("Mo", "Molybdenum"), 43: ("Tc", "Technetium"), 44: ("Ru", "Ruthenium"), 45: ("Rh", "Rhodium"),
-            46: ("Pd", "Palladium"), 47: ("Ag", "Silver"), 48: ("Cd", "Cadmium"), 49: ("In", "Indium"), 50: ("Sn", "Tin"),
-            51: ("Sb", "Antimony"), 52: ("Te", "Tellurium"), 53: ("I", "Iodine"), 54: ("Xe", "Xenon"), 55: ("Cs", "Cesium"),
-            56: ("Ba", "Barium"), 57: ("La", "Lanthanum"), 58: ("Ce", "Cerium"), 59: ("Pr", "Praseodymium"),
-            60: ("Nd", "Neodymium"), 61: ("Pm", "Promethium"), 62: ("Sm", "Samarium"), 63: ("Eu", "Europium"),
-            64: ("Gd", "Gadolinium"), 65: ("Tb", "Terbium"), 66: ("Dy", "Dysprosium"), 67: ("Ho", "Holmium"),
-            68: ("Er", "Erbium"), 69: ("Tm", "Thulium"), 70: ("Yb", "Ytterbium"), 71: ("Lu", "Lutetium"), 72: ("Hf", "Hafnium"),
-            73: ("Ta", "Tantalum"), 74: ("W", "Tungsten"), 75: ("Re", "Rhenium"), 76: ("Os", "Osmium"), 77: ("Ir", "Iridium"),
-            78: ("Pt", "Platinum"), 79: ("Au", "Gold"), 80: ("Hg", "Mercury"), 81: ("Tl", "Thallium"), 82: ("Pb", "Lead"),
-            83: ("Bi", "Bismuth"), 84: ("Po", "Polonium"), 85: ("At", "Astatine"), 86: ("Rn", "Radon"), 87: ("Fr", "Francium"),
-            88: ("Ra", "Radium"), 89: ("Ac", "Actinium"), 90: ("Th", "Thorium"), 91: ("Pa", "Protactinium"),
-            92: ("U", "Uranium"), 93: ("Np", "Neptunium"), 94: ("Pu", "Plutonium"), 95: ("Am", "Americium"),
-            96: ("Cm", "Curium"), 97: ("Bk", "Berkelium"), 98: ("Cf", "Californium"), 99: ("Es", "Einsteinium"),
-            100: ("Fm", "Fermium"), 101: ("Md", "Mendelevium"), 102: ("No", "Nobelium"), 103: ("Lr", "Lawrencium"),
-            104: ("Rf", "Rutherfordium"), 105: ("Db", "Dubnium"), 106: ("Sg", "Seaborgium"), 107: ("Bh", "Bohrium"),
-            108: ("Hs", "Hassium"), 109: ("Mt", "Meitnerium"), 110: ("Ds", "Darmstadtium"), 111: ("Rg", "Roentgenium"),
-            112: ("Cn", "Copernicium"), 113: ("Nh", "Nihonium"), 114: ("Fl", "Flerovium"), 115: ("Mc", "Moscovium"),
-            116: ("Lv", "Livermorium"), 117: ("Ts", "Tennessine"), 118: ("Og", "Oganesson")}
+
+
+# Generated from the file $PHITSHOME/data/xsdir.jnd; <atomic number>: ('symbol', 'name', ((<atomic_weight>, 'library_code'))).
+# Atomic weight of zero I presume corresponds to a measurement of an average over atomic weights.
+elements = {1: ('H', 'Hydrogen', ((1, '50c'), (2, '50c'), (0, '50p'), (0, '50e'), (1, '51c'), (2, '51c'), (1, '51h'), (2, '51h'))),
+            2: ('He', 'Helium', ((3, '50c'), (4, '50c'), (0, '50p'), (0, '50e'))),
+            3: ('Li', 'Lithium', ((6, '50c'), (7, '50c'), (0, '50p'), (0, '50e'), (6, '51h'), (7, '51h'))),
+            4: ('Be', 'Beryllium', ((9, '50c'), (0, '50p'), (0, '50e'), (9, '51h'))),
+            5: ('B', 'Boron', ((10, '50c'), (11, '50c'), (0, '50p'), (0, '50e'))),
+            6: ('C', 'Carbon', ((0, '50c'), (12, '50c'), (0, '50p'), (0, '50e'), (0, '51c'), (12, '51c'), (13, '51c'), (0, '51h'),
+                                (12, '51h'), (13, '51h'))),
+            7: ('N', 'Nitrogen', ((14, '50c'), (15, '50c'), (0, '50p'), (0, '50e'), (14, '51c'), (14, '51h'))),
+            8: ('O', 'Oxygen', ((16, '50c'), (0, '50p'), (0, '50e'), (16, '51c'), (16, '51h'))),
+            9: ('F', 'Fluorine', ((19, '50c'), (0, '50p'), (0, '50e'))),
+            10: ('Ne', 'Neon', ((0, '50p'), (0, '50e'))),
+            11: ('Na', 'Sodium', ((23, '50c'), (0, '50p'), (0, '50e'))),
+            12: ('Mg', 'Magnesium', ((24, '50c'), (25, '50c'), (26, '50c'), (0, '50p'), (0, '50e'))),
+            13: ('Al', 'Aluminum', ((27, '50c'), (0, '50p'), (0, '50e'), (27, '51c'), (27, '51h'))),
+            14: ('Si', 'Silicon', ((28, '50c'), (29, '50c'), (30, '50c'), (0, '50p'), (0, '50e'), (28, '51c'), (29, '51c'), (30, '51c'),
+                                   (28, '51h'), (29, '51h'), (30, '51h'))),
+            15: ('P', 'Phosphorus', ((31, '50c'), (0, '50p'), (0, '50e'))),
+            16: ('S', 'Sulfur', ((32, '50c'), (33, '50c'), (34, '50c'), (36, '50c'), (0, '50p'), (0, '50e'))),
+            17: ('Cl', 'Chlorine', ((35, '50c'), (37, '50c'), (0, '50p'), (0, '50e'))),
+            18: ('Ar', 'Argon', ((40, '50c'), (0, '50p'), (0, '50e'))),
+            19: ('K', 'Potassium', ((39, '50c'), (40, '50c'), (41, '50c'), (0, '50p'), (0, '50e'))),
+            20: ('Ca', 'Calcium', ((40, '50c'), (42, '50c'), (43, '50c'), (44, '50c'), (46, '50c'), (48, '50c'), (0, '50p'), (0, '50e'))),
+            21: ('Sc', 'Scandium', ((45, '50c'), (0, '50p'), (0, '50e'))),
+            22: ('Ti', 'Titanium', ((46, '50c'), (47, '50c'), (48, '50c'), (49, '50c'), (50, '50c'), (0, '50p'), (0, '50e'))),
+            23: ('V', 'Vanadium', ((50, '50c'), (51, '50c'), (0, '50p'), (0, '50e'))),
+            24: ('Cr', 'Chromium', ((50, '50c'), (52, '50c'), (53, '50c'), (54, '50c'), (0, '50p'), (0, '50e'))),
+            25: ('Mn', 'Manganese', ((55, '50c'), (0, '50p'), (0, '50e'))),
+            26: ('Fe', 'Iron', ((54, '50c'), (56, '50c'), (57, '50c'), (58, '50c'), (59, '50c'), (0, '50p'), (0, '50e'), (54, '51c'),
+                                (56, '51c'), (57, '51c'), (58, '51c'), (54, '51h'), (56, '51h'), (57, '51h'), (58, '51h'))),
+            27: ('Co', 'Cobalt', ((59, '50c'), (0, '50p'), (0, '50e'))),
+            28: ('Ni', 'Nickel', ((58, '50c'), (59, '50c'), (60, '50c'), (61, '50c'), (62, '50c'), (64, '50c'), (0, '50p'), (0, '50e'))),
+            29: ('Cu', 'Copper', ((63, '50c'), (65, '50c'), (0, '50p'), (0, '50e'), (63, '51c'), (65, '51c'), (63, '51h'), (65, '51h'))),
+            30: ('Zn', 'Zinc', ((64, '50c'), (65, '50c'), (66, '50c'), (67, '50c'), (68, '50c'), (70, '50c'), (0, '50p'), (0, '50e'))),
+            31: ('Ga', 'Gallium', ((69, '50c'), (71, '50c'), (0, '50p'), (0, '50e'))),
+            32: ('Ge', 'Germanium', ((70, '50c'), (72, '50c'), (73, '50c'), (74, '50c'), (76, '50c'), (0, '50p'), (0, '50e'))),
+            33: ('As', 'Arsenic', ((75, '50c'), (0, '50p'), (0, '50e'))),
+            34: ('Se', 'Selenium', ((74, '50c'), (76, '50c'), (77, '50c'), (78, '50c'), (79, '50c'), (80, '50c'), (82, '50c'), (0, '50p'),
+                                    (0, '50e'))),
+            35: ('Br', 'Bromine', ((79, '50c'), (81, '50c'), (0, '50p'), (0, '50e'))),
+            36: ('Kr', 'Krypton', ((78, '50c'), (80, '50c'), (82, '50c'), (83, '50c'), (84, '50c'), (85, '50c'), (86, '50c'), (0, '50p'),
+                                   (0, '50e'))),
+            37: ('Rb', 'Rubidium', ((85, '50c'), (86, '50c'), (87, '50c'), (0, '50p'), (0, '50e'))),
+            38: ('Sr', 'Strontium', ((84, '50c'), (86, '50c'), (87, '50c'), (88, '50c'), (89, '50c'), (90, '50c'), (0, '50p'),
+                                     (0, '50e'))),
+            39: ('Y', 'Yttrium', ((89, '50c'), (90, '50c'), (91, '50c'), (0, '50p'), (0, '50e'))),
+            40: ('Zr', 'Zirconium', ((90, '50c'), (91, '50c'), (92, '50c'), (93, '50c'), (94, '50c'), (95, '50c'), (96, '50c'), (0, '50p'),
+                                     (0, '50e'))),
+            41: ('Nb', 'Niobium', ((93, '50c'), (94, '50c'), (95, '50c'), (0, '50p'), (0, '50e'))),
+            42: ('Mo', 'Molybdenum', ((92, '50c'), (94, '50c'), (95, '50c'), (96, '50c'), (97, '50c'), (98, '50c'), (99, '50c'),
+                                      (100, '50c'), (0, '50p'), (0, '50e'))),
+            43: ('Tc', 'Technetium', ((99, '50c'), (0, '50p'), (0, '50e'))),
+            44: ('Ru', 'Ruthenium', ((96, '50c'), (98, '50c'), (99, '50c'), (100, '50c'), (101, '50c'), (102, '50c'), (103, '50c'),
+                                     (104, '50c'), (105, '50c'), (106, '50c'), (0, '50p'), (0, '50e'))),
+            45: ('Rh', 'Rhodium', ((103, '50c'), (105, '50c'), (0, '50p'), (0, '50e'))),
+            46: ('Pd', 'Palladium', ((102, '50c'), (104, '50c'), (105, '50c'), (106, '50c'), (107, '50c'), (108, '50c'), (110, '50c'),
+                                     (0, '50p'), (0, '50e'))),
+            47: ('Ag', 'Silver', ((107, '50c'), (109, '50c'), (190, '50c'), (111, '50c'), (0, '50p'), (0, '50e'))),
+            48: ('Cd', 'Cadmium', ((106, '50c'), (108, '50c'), (110, '50c'), (111, '50c'), (112, '50c'), (113, '50c'), (114, '50c'),
+                                   (116, '50c'), (0, '50p'), (0, '50e'))),
+            49: ('In', 'Indium', ((113, '50c'), (115, '50c'), (0, '50p'), (0, '50e'))),
+            50: ('Sn', 'Tin', ((112, '50c'), (114, '50c'), (115, '50c'), (116, '50c'), (117, '50c'), (118, '50c'), (119, '50c'),
+                               (120, '50c'), (122, '50c'), (123, '50c'), (124, '50c'), (126, '50c'), (0, '50p'), (0, '50e'))),
+            51: ('Sb', 'Antimony', ((121, '50c'), (123, '50c'), (124, '50c'), (125, '50c'), (126, '50c'), (0, '50p'), (0, '50e'))),
+            52: ('Te', 'Tellurium', ((120, '50c'), (122, '50c'), (123, '50c'), (124, '50c'), (125, '50c'), (126, '50c'), (197, '50c'),
+                                     (128, '50c'), (199, '50c'), (130, '50c'), (132, '50c'), (0, '50p'), (0, '50e'))),
+            53: ('I', 'Iodine', ((127, '50c'), (129, '50c'), (130, '50c'), (131, '50c'), (135, '50c'), (0, '50p'), (0, '50e'))),
+            54: ('Xe', 'Xenon', ((124, '50c'), (126, '50c'), (128, '50c'), (129, '50c'), (130, '50c'), (131, '50c'), (132, '50c'),
+                                 (133, '50c'), (134, '50c'), (135, '50c'), (136, '50c'), (0, '50p'), (0, '50e'))),
+            55: ('Cs', 'Cesium', ((133, '50c'), (134, '50c'), (135, '50c'), (136, '50c'), (137, '50c'), (0, '50p'), (0, '50e'))),
+            56: ('Ba', 'Barium', ((130, '50c'), (132, '50c'), (134, '50c'), (135, '50c'), (136, '50c'), (137, '50c'), (138, '50c'),
+                                  (140, '50c'), (0, '50p'), (0, '50e'))),
+            57: ('La', 'Lanthanum', ((138, '50c'), (139, '50c'), (140, '50c'), (0, '50p'), (0, '50e'))),
+            58: ('Ce', 'Cerium', ((140, '50c'), (141, '50c'), (142, '50c'), (143, '50c'), (144, '50c'), (0, '50p'), (0, '50e'))),
+            59: ('Pr', 'Praseodymium', ((141, '50c'), (143, '50c'), (0, '50p'), (0, '50e'))),
+            60: ('Nd', 'Neodymium', ((142, '50c'), (143, '50c'), (144, '50c'), (145, '50c'), (146, '50c'), (147, '50c'), (148, '50c'),
+                                     (150, '50c'), (0, '50p'), (0, '50e'))),
+            61: ('Pm', 'Promethium', ((147, '50c'), (148, '50c'), (198, '50c'), (149, '50c'), (151, '50c'), (0, '50p'), (0, '50e'))),
+            62: ('Sm', 'Samarium', ((144, '50c'), (147, '50c'), (148, '50c'), (149, '50c'), (150, '50c'), (151, '50c'), (152, '50c'),
+                                    (153, '50c'), (154, '50c'), (0, '50p'), (0, '50e'))),
+            63: ('Eu', 'Europium', ((151, '50c'), (152, '50c'), (153, '50c'), (154, '50c'), (155, '50c'), (156, '50c'), (157, '50c'),
+                                    (0, '50p'), (0, '50e'))),
+            64: ('Gd', 'Gadolinium', ((152, '50c'), (153, '50c'), (154, '50c'), (155, '50c'), (156, '50c'), (157, '50c'), (158, '50c'),
+                                      (160, '50c'), (0, '50p'), (0, '50e'))),
+            65: ('Tb', 'Terbium', ((159, '50c'), (160, '50c'), (0, '50p'), (0, '50e'))),
+            66: ('Dy', 'Dysprosium', ((154, '50c'), (156, '50c'), (158, '50c'), (159, '50c'), (160, '50c'), (161, '50c'), (162, '50c'),
+                                      (163, '50c'), (164, '50c'), (0, '50p'), (0, '50e'))),
+            67: ('Ho', 'Holmium', ((0, '50p'), (0, '50e'))),
+            68: ('Er', 'Erbium', ((162, '50c'), (164, '50c'), (166, '50c'), (167, '50c'), (168, '50c'), (170, '50c'), (0, '50p'),
+                                  (0, '50e'))),
+            69: ('Tm', 'Thulium', ((169, '50c'), (0, '50p'), (0, '50e'))),
+            70: ('Yb', 'Ytterbium', ((168, '50c'), (170, '50c'), (171, '50c'), (172, '50c'), (173, '50c'), (174, '50c'), (176, '50c'),
+                                     (0, '50p'), (0, '50e'))),
+            71: ('Lu', 'Lutetium', ((0, '50p'), (0, '50e'))),
+            72: ('Hf', 'Hafnium', ((174, '50c'), (176, '50c'), (177, '50c'), (178, '50c'), (179, '50c'), (180, '50c'), (181, '50c'),
+                                   (182, '50c'), (0, '50p'), (0, '50e'))),
+            73: ('Ta', 'Tantalum', ((181, '50c'), (0, '50p'), (0, '50e'))),
+            74: ('W', 'Tungsten', ((180, '50c'), (182, '50c'), (183, '50c'), (184, '50c'), (186, '50c'), (0, '50p'), (0, '50e'))),
+            75: ('Re', 'Rhenium', ((0, '50p'), (0, '50e'))),
+            76: ('Os', 'Osmium', ((184, '50c'), (186, '50c'), (187, '50c'), (188, '50c'), (189, '50c'), (190, '50c'), (192, '50c'),
+                                  (0, '50p'), (0, '50e'))),
+            77: ('Ir', 'Iridium', ((0, '50p'), (0, '50e'))),
+            78: ('Pt', 'Platinum', ((0, '50p'), (0, '50e'))),
+            79: ('Au', 'Gold', ((197, '50c'), (0, '50p'), (0, '50e'))),
+            80: ('Hg', 'Mercury', ((196, '50c'), (198, '50c'), (199, '50c'), (200, '50c'), (201, '50c'), (202, '50c'), (204, '50c'),
+                                   (0, '50p'), (0, '50e'))),
+            81: ('Tl', 'Thallium', ((0, '50p'), (0, '50e'))),
+            82: ('Pb', 'Lead', ((204, '50c'), (206, '50c'), (207, '50c'), (208, '50c'), (0, '50p'), (0, '50e'), (204, '51c'), (206, '51c'),
+                                (207, '51c'), (208, '51c'), (204, '51h'), (206, '51h'), (207, '51h'), (208, '51h'))),
+            83: ('Bi', 'Bismuth', ((209, '50c'), (0, '50p'), (0, '50e'), (209, '51c'), (209, '51h'))),
+            84: ('Po', 'Polonium', ((0, '50p'), (0, '50e'))),
+            85: ('At', 'Astatine', ((0, '50p'), (0, '50e'))),
+            86: ('Rn', 'Radon', ((0, '50p'), (0, '50e'))),
+            87: ('Fr', 'Francium', ((0, '50p'), (0, '50e'))),
+            88: ('Ra', 'Radium', ((223, '50c'), (224, '50c'), (225, '50c'), (226, '50c'), (0, '50p'), (0, '50e'))),
+            89: ('Ac', 'Actinium', ((225, '50c'), (226, '50c'), (227, '50c'), (0, '50p'), (0, '50e'))),
+            90: ('Th', 'Thorium', ((227, '50c'), (228, '50c'), (229, '50c'), (230, '50c'), (231, '50c'), (232, '50c'), (233, '50c'),
+                                   (234, '50c'), (0, '50p'), (0, '50e'))),
+            91: ('Pa', 'Protactinium', ((229, '50c'), (230, '50c'), (231, '50c'), (232, '50c'), (233, '50c'), (0, '50p'), (0, '50e'))),
+            92: ('U', 'Uranium', ((230, '50c'), (231, '50c'), (232, '50c'), (233, '50c'), (234, '50c'), (235, '50c'), (236, '50c'),
+                                  (237, '50c'), (238, '50c'), (0, '50p'), (0, '50e'))),
+            93: ('Np', 'Neptunium', ((234, '50c'), (235, '50c'), (236, '50c'), (237, '50c'), (238, '50c'), (239, '50c'), (0, '50p'),
+                                     (0, '50e'))),
+            94: ('Pu', 'Plutonium', ((236, '50c'), (237, '50c'), (238, '50c'), (239, '50c'), (240, '50c'), (241, '50c'), (242, '50c'),
+                                     (244, '50c'), (246, '50c'), (0, '50p'), (0, '50e'))),
+            95: ('Am', 'Americium', ((240, '50c'), (241, '50c'), (242, '50c'), (292, '50c'), (243, '50c'), (244, '50c'), (294, '50c'),
+                                     (0, '50p'), (0, '50e'))),
+            96: ('Cm', 'Curium', ((240, '50c'), (241, '50c'), (242, '50c'), (243, '50c'), (244, '50c'), (245, '50c'), (246, '50c'),
+                                  (247, '50c'), (248, '50c'), (249, '50c'), (250, '50c'), (0, '50p'), (0, '50e'))),
+            97: ('Bk', 'Berkelium', ((245, '50c'), (246, '50c'), (247, '50c'), (248, '50c'), (249, '50c'), (250, '50c'), (0, '50p'),
+                                     (0, '50e'))),
+            98: ('Cf', 'Californium', ((246, '50c'), (248, '50c'), (249, '50c'), (250, '50c'), (251, '50c'), (252, '50c'), (253, '50c'),
+                                       (254, '50c'), (0, '50p'), (0, '50e'))),
+            99: ('Es', 'Einsteinium', ((251, '50c'), (252, '50c'), (253, '50c'), (254, '50c'), (294, '50c'), (255, '50c'), (0, '50p'),
+                                       (0, '50e'))),
+            100: ('Fm', 'Fermium', ((255, '50c'), (0, '50p'), (0, '50e'))),
+            101: ('Md', 'Mendelevium'),
+            102: ('No', 'Nobelium'),
+            103: ('Lr', 'Lawrencium'),
+            104: ('Rf', 'Rutherfordium'),
+            105: ('Db', 'Dubnium'),
+            106: ('Sg', 'Seaborgium'),
+            107: ('Bh', 'Bohrium'),
+            108: ('Hs', 'Hassium'),
+            109: ('Mt', 'Meitnerium'),
+            110: ('Ds', 'Darmstadtium'),
+            111: ('Rg', 'Roentgenium'),
+            112: ('Cn', 'Copernicium'),
+            113: ('Nh', 'Nihonium'),
+            114: ('Fl', 'Flerovium'),
+            115: ('Mc', 'Moscovium'),
+            116: ('Lv', 'Livermorium'),
+            117: ('Ts', 'Tennessine'),
+            118: ('Og', 'Oganesson')}
 
 particles = {2212: "proton", 2112: "neutron", 211: "pion+", 111: "pion0", -211: "pion-", -13: "muon+", 13: "muon-",
              321: "kaon+", 311: "kaon0", -321: "kaon-", 11: "electron", -11: "positron", 22: "photon",
@@ -383,6 +515,7 @@ particles = {2212: "proton", 2112: "neutron", 211: "pion+", 111: "pion0", -211: 
 part_rev = {v: k for k, v in particles.items()}
 elsymbol_rev = {v[0]: k for k, v in elements.items()}
 elname_rev = {v[1]: k for k, v in elements.items()}
+# elweights_rev = {k: set(map(lambda x: x[0], v[]))}
 
 # Read in an ASCII dump file produced by a PHITS tally
 def kf_decode(n: int) -> str:
@@ -524,7 +657,7 @@ class Orientation(ValSpec):
 
 class Path(ValSpec):
     def __init__(self):
-        super().__init__(text(alphabet=characters(whitelist_categories=("Nd", "L"))))
+        super().__init__(text(min_size=1, alphabet=characters(min_codepoint=0x0041, max_codepoint=0x007a)))
 
     def phits(self, val):
         if isinstance(val, str):
@@ -554,9 +687,25 @@ class OrthogonalMatrix(ValSpec):
         return "an orthogonal matrix (AA^T = I) representing a rotation"
 
 
+class LibraryID(ValSpec):
+    def __init__(self):
+        # TODO: make sure I understand the libraries right
+        self.ids = ["50c", "20t", "21t", "22t", "23t", "24t", "25t", "26t", "27t", "28t", "29t", "50t", "50e", "51c", "51h", "90p"]
+        super().__init__(sampled_from(self.ids))
+
+    def phits(self, val):
+        if val in self.ids:
+            return val
+        else:
+            return partial(lambda va, var: ValueError(f"{var} must be a valid library ID (one of {self.ids}); got {va}."), val)
+
+    def description(self):
+        return f"a library ID (one of {self.ids})"
+
 class Text(ValSpec):
     def __init__(self):
-        super().__init__(text(min_size=1))
+
+        super().__init__(text(min_size=1, alphabet=characters(min_codepoint=0x0041, max_codepoint=0x007a))) # TODO: make more general
 
     def phits(self, val):
         if isinstance(val, str) and val != "":

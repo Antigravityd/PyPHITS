@@ -22,6 +22,10 @@ class Plane(PhitsObject):
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform", "P", "A", "B", "C", "D"),)
 
+    def restrictions(self):
+        if self.A == 0 and self.B == 0 and self.C == 0:
+            raise ValueError("For Plane: at least one of A, B, or C must be nonzero.")
+
 
 # TODO: consider obliterating the next 2
 class PointPlane(PhitsObject):
@@ -71,7 +75,7 @@ class Cylinder(PhitsObject):
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "RCC", " ".join(self.center), " ".join(self.height), "radius"),)
+                           "RCC", " ".join(str(i) for i in self.center), " ".join(str(i) for i in self.height), "radius"),)
 
 class Cone(PhitsObject):
     """A truncated right-angle cone with bottom-face center (x_0, y_0, z_0), height vector (H_x, H_y, H_z), and bottom and top radii

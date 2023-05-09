@@ -31,23 +31,34 @@ semi_common = {"elevation": ("dir", OneOf(RealBetween(0.0, 1.0), FinBij({"isotro
 
 class Cylindrical(PhitsObject):
     name = "source"
-    mapping = common | {"center": (("x0", "y0"), (Real(), Real()), None),
+    syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
                         "zbounds": (("z0", "z1"), (Real(), Real()), None),
                         "radius": ("r0", PosReal(), None),
                         "cutout_radius": ("r1", PosReal(), None)} | semi_common
 
-    shape=("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start",
-           "fissile", "center", "zbounds", "radius", "cutout_radius", "elevation", "azimuth", "dispersion", ("spectrum",))
+    shape = lambda self: ("s-type = 1", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start",
+                          "fissile", "center", "zbounds", "radius", "cutout_radius",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
+    def restrictions(self):
+        if (self.radius is None or self.radius == 0) and self.cutout_radius is not None:
+            raise ValueError("Cylindrical sources that specify a cutout radius must also specify a nonzero radius;"
+                             "got cutout_radius={self.cutout_radius}.")
+        if self.radius is not None and self.cutout_radius is not None and self.radius < self.cutout_radius:
+            raise ValueError("Cylindrical sources cannot have cutouts larger than their radius;"
+                             f"got radius={self.radius} and cutout_radius={self.cutout_radius}.")
 
 class Rectangular(PhitsObject):
     name = "source"
-    mapping = common | {"xbounds": (("x0", "x1"), (Real(), Real()), None),
-                        "ybounds": (("x0", "x1"), (Real(), Real()), None),
-                        "zbounds": (("x0", "x1"), (Real(), Real()))} | semi_common
+    syntax = common | {"xbounds": (("x0", "x1"), (Real(), Real()), None),
+                       "ybounds": (("x0", "x1"), (Real(), Real()), None),
+                       "zbounds": (("x0", "x1"), (Real(), Real()), None)} | semi_common
 
-    shape=("s-type = 2", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start"
-           "fissile", "xbounds", "ybounds", "zbounds", "elevation", "azimuth", "dispersion", ("spectrum",))
+    shape = lambda self: ("s-type = 2", "projectile", "spin", "mask", "transform", "weight", "charge_override", "counter_start",
+                          "fissile", "xbounds", "ybounds", "zbounds",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
 
 
@@ -69,7 +80,7 @@ class GaussianPrism(PhitsObject):
                        "zbounds": (("z0", "z1"), (Real(), Real()), None)} | semi_common
 
     shape = lambda self: ("s-type = 13", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-                          "charge_override", "fissile", "center", "fwhms", "zbounds",
+                          "charge_override", "fissile", "center", "fwhm", "zbounds",
                           (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
@@ -80,12 +91,21 @@ class Parabolic(PhitsObject):
     name = "source"
 
     syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
-                       "width": (("x1", "y1"), (Real(), Real()), None),
+                       "width": (("x1", "y1"), (PosReal(), PosReal()), None),
                        "zbounds": (("z0", "z1"), (Real(), Real()), None),
-                       "order": ("rn", Integer(), None)} | semi_common
-    shape = ("s-type = 7", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-             "dispersion", ("spectrum",))
+                       "order": ("rn", Between(2, 2147483647), None) # PHITS's default INTEGER is 32-bit; if something's bigger,
+                                                                     # their ≡ 0 (mod 2) check of multiplying and dividing by 2 fails.
+                       } | semi_common
+    shape = lambda self: ("s-type = 7", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "center", "width", "zbounds", "order",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
+
+    def restrictions(self):
+        if self.order is not None and self.order % 2 != 0:
+            raise ValueError(f"The order of a Parabolic source must be even; got order={self.order}.") # TODO: needed?
+        if self.zbounds is not None and self.zbounds[0] > self.zbounds[1]:
+            raise ValueError(f"The the zbounds of a Parabolic source must be a well-formed interval; got zbounds={self.zbounds}.")
 
 # The difference between these two in the manual is...sus
 class ParabolicPrism(PhitsObject):
@@ -93,26 +113,48 @@ class ParabolicPrism(PhitsObject):
     syntax = common | {"center": (("x0", "y0"), (Real(), Real()), None),
                        "width": ("r1", Real(), None),
                        "zbounds": (("z0", "z1"), (Real(), Real()), None),
-                       "order": ("rn", Integer(), None)} | semi_common
-    shape = ("s-type = 15", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-                  "charge_override", "fissile", "center", "width", "zbounds", "order", "elevation", "azimuth",
-                  "dispersion", ("spectrum",))
+                       "order": ("rn", Between(2, 2147483647), None)
+                       } | semi_common
+    shape = lambda self: ("s-type = 15", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "center", "width", "zbounds", "order",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
+
+    def restrictions(self):
+        if self.order is not None and self.order % 2 != 0:
+            raise ValueError(f"The order of a ParabolicPrism source must be even; got order={self.order}.") # TODO: needed?
+        if self.zbounds is not None and self.zbounds[0] > self.zbounds[1]:
+            raise ValueError(f"The the zbounds of a ParabolicPrism source must be a well-formed interval; got zbounds={self.zbounds}.")
 
 
 # dir = iso not supported
 class Spherical(PhitsObject):
     name = "source"
     syntax = common | {"center": (("x0", "y0", "z0"), (Real(), Real(), Real()), None),
-                       "r_in": ("r1", Real(), None),
-                       "r_out": ("r2", Real(), None),
+                       "r_in": ("r1", PosReal(), None),
+                       "r_out": ("r2", PosReal(), None),
                        # "elevation_bounds": (("ag1", "ag2"), (Real(), Real()), None),
                        # "azimuth_bounds": (("pg1", "pg2"), (Real(), Real()), None),
-                       "elevation": ("dir", OneOf(PosReal(), FinBij({"isotropic": "all"}), IsA(AngleDistribution)), None),
+                       "elevation": ("dir", OneOf(RealBetween(0.0, 1.0), FinBij({"all": "all"}), IsA(AngleDistribution)), None),
+                       # TODO: this elevation and this elevation only doesn't work if I set FinBij({"isotropic": "all"}).
                        "resample_cutoff": ("isbias", Choice10(), None),
                        "spectrum": (None, IsA(EnergyDistribution), 1)}
-    shape = ("s-type = 9", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "center", "r_in", "r_out", "elevation", "resample_cutoff", ("spectrum",))
+    shape = lambda self: ("s-type = 9", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "center", "r_in", "r_out",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "resample_cutoff", ("spectrum",))
 
+    def restrictions(self):
+        if (self.elevation == "isotropic" and self.r_in is not None and (self.r_out is None or self.r_out == 0)) \
+           or (self.elevation == "isotropic" and self.r_in is not None and self.r_out is not None and self.r_in <= self.r_out):
+            raise ValueError("Spherical sources with isotropic elevation must have greater inner radius than outer radius;"
+                             f"got r_in={self.r_in} and r_out={self.r_out}.")
+
+
+        if (self.elevation != "isotropic" and self.r_in is not None and (self.r_out is None or self.r_out == 0)) \
+           or (self.elevation != "isotropic" and self.r_in is not None and self.r_out is not None and self.r_in > self.r_out):
+            raise ValueError("Spherical sources that specify an inner radius must also specify a greater outer radius;"
+                             f"got r_in={self.r_in} and r_out={self.r_out}.")
 
 
 class Beam(PhitsObject): # I don't understand what this is trying to do
@@ -126,7 +168,8 @@ class Beam(PhitsObject): # I don't understand what this is trying to do
                        "angle_dispersion": (("xmrad1", "ymrad1"), (PosReal(), PosReal()), None),
                        "phase_center": (("x2", "y2"), (Real(), Real()), None),
                        "phase_angle_center": (("xmrad2", "ymrad2"), (Real(), Real()), None),
-                       "positive": ("dir", Choice10(true=1, false=-1), None)}
+                       "positive": ("dir", FinBij({True: 1, False: -1}), None),
+                       "spectrum": (None, IsA(EnergyDistribution), 1)}
 
     shape = ("s-type = 11", "projectile", "spin", "mask", "transform", "weight", "counter_start",
              "charge_override", "fissile", "center", "eccentricity", "zbounds", "phase_gradients", "sampling", "dispersion",
@@ -142,9 +185,11 @@ class Conical(PhitsObject):
                        "altitude": (("x1", "y1", "z1"), (Real(), Real(), Real()), None),
                        "trim": (("r0", "r1"), (Real(), Real()), None),
                        "angle": ("r2", PosReal(), None)} | semi_common
-    shape = ("s-type = 18", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "top", "altitude", "trim", "angle", "elevation", "azimuth",
-             "dispersion", ("spectrum",))
+    shape = lambda self: ("s-type = 18", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "top", "altitude", "trim", "angle",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth",
+                          "dispersion", ("spectrum",))
 
 
 
@@ -155,9 +200,11 @@ class TrianglePrism(PhitsObject):
                        "side2": (("x2", "y2", "z2"), (Real(), Real(), Real()), None),
                        "extrusion": (("x3", "y3", "z3"), (Real(), Real(), Real()), None),
                        "attenuation": ("exa", PosReal(), None)} | semi_common
-    shape = ("s-type = 20", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "origin", "side1", "side2", "extrusion", "attenuation", "elevation", "azimuth",
-             "dispersion", ("spectrum",))
+    shape = lambda self: ("s-type = 20", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "origin", "side1", "side2", "extrusion", "attenuation",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth",
+                          "dispersion", ("spectrum",))
 
 
 
@@ -167,13 +214,13 @@ class TrianglePrism(PhitsObject):
 #     required = ["projectile", "energy", "mesh"]
 #     positional = ["projectile", "energy", "mesh"]
 #     optional = ["spin", "mask", "transform", "weight", "factor", "charge_override", "fissile",
-#                 "elevation", "azimuth", "dispersion", "e0", "cutoff_behavior"]
+#                 , "azimuth", "dispersion", "e0", "cutoff_behavior"]
 #     ident_map = {"spin": ("sx", "sy", "sz"), "mask": ("reg", "ntmax"), "transform": "trcl",
 #                  "weight": "wgt", "charge_override": "izst", "fissile": "ispfs",
 #                  "elevation": "dir", "azimuth": "phi", "dispersion": "dom", "energy": "e0"}
 #     value_map = {"neutrons": 2, True: 1}
 #     shape = ("s-type = 22", "projectile", "spin", "mask", "transform", "weight", "factor",
-#              "charge_override", "fissile", "mesh", "elevation", "azimuth", "dispersion", "energy")
+#              "charge_override", "fissile", "mesh", , "azimuth", "dispersion", "energy")
 
 
 

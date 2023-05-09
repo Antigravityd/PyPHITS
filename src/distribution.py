@@ -54,10 +54,10 @@ class AngleDistribution(PhitsObject):
                           f"na = {len(self.bins)}",
                           "\n".join(" ".join(str(i) for i in j) for j in self.bins) + f"\n{self.last_bin}",
                           "q-type = 1\n" + " ".join((str(i) for i in self.particle_production)) if self.particle_production \
-                          else "q-type = 0")
+                          else "")
 
     def restrictions(self):
-        if len(self.bins) != len(self.particle_production):
+        if self.particle_production is not None and len(self.bins) != len(self.particle_production):
             raise ValueError("For EnergyDistribution: len(bins) must equal len(particle_production).")
 
 
@@ -75,9 +75,9 @@ class EnergyDistribution(PhitsObject):
                           ("e-type = 23" if slf.units == "MeV" else "e-type = 33"),
                           f"ne = -{len(slf.bins)}" if slf.normalize == "1/Lethargy" else f"ne = {len(slf.bins)}",
                           "\n".join(" ".join(str(j) for j in i) for i in slf.bins),
-                          "p-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "p-type = 0")
+                          "p-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "")
     def restrictions(self):
-        if len(self.bins) != len(self.particle_production):
+        if self.particle_production is not None and len(self.bins) != len(self.particle_production):
             raise ValueError("For EnergyDistribution: len(bins) must equal len(particle_production).")
 
 class GaussianEnergy(PhitsObject):

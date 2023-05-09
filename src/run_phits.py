@@ -12,11 +12,15 @@ import os
 from base import PhitsObject
 from parameters import Parameters
 from cell import OuterVoid
+from dmp_reader import read_dump
 
 
+def _max_line_len(inp: str) -> int:
+    return max(map(len, inp.split("\n")))
 
-def make_input(cells, sources, tallies, title: str = str(datetime.now()), parameters: dict = dict(), cross_sections=[], raw="",
-               outer_void_properties: dict = dict(), **kwargs) -> str:
+
+def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_sections=[], multipliers=[],
+               raw="", outer_void_properties: dict = dict(), **kwargs) -> str:
     """Given a situation, produces a corresponding input file.
 
     Required arguments:
@@ -55,9 +59,6 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
 
     add_to_set(cells, unique)
 
-    toset = OuterVoid([], **outer_void_properties)
-    toset.regions = (~reduce(lambda c1, c2: c1 | c2, cells)).regions
-    unique.add(toset)
 
     add_to_set(sources, unique)
     add_to_set(tallies, unique)
@@ -120,6 +121,11 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
         type_divided["parameters"].append(Parameters(**kwargs))
     for node in unique:
         type_divided[node.name].append(node)
+
+    toset = OuterVoid([], **outer_void_properties)
+    toset.regions = (~reduce(lambda c1, c2: c1 | c2, type_divided["cell"])).regions
+
+    type_divided["cell"].append(toset)
 
 
     for section, entries in type_divided.items():
@@ -186,21 +192,21 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
     inp += "[Title]\n"
     inp += title + '\n'
 
-    if parameters or any(not param.empty() for param in type_divided["parameters"]):
+    if any(not param.empty() for param in type_divided["parameters"]):
         add_defs("parameters") # parameters associated with object declarations, but that need to be in this global context.
-        for var, val in parameters.items(): # directly passed global parameters
-            if var not in {"totfact", "iscorr"}: # TODO: document these two
-                inp += f"{var} = {val}\n"
+        # for var, val in parameters.items(): # directly passed global parameters
+        #     if var not in {"totfact", "iscorr"}: # TODO: document these two
+        #         inp += f"{var} = {val}\n"
 
 
 
 
     inp += "[Source]\n"
-    if "totfact" in parameters:
-        val = parameters["totfact"]
+    if "totfact" in kwargs:
+        val = kwargs["totfact"]
         inp += f"totfact = {val}\n"
-    if "iscorr" in parameters:
-        val = parameters["iscorr"]
+    if "iscorr" in kwargs:
+        val = kwargs["iscorr"]
         inp += f"iscorr = {val}\n"
 
     if isinstance(sources, col.Iterable):
@@ -229,7 +235,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
     add_defs("ww_bias")
     add_defs("forced_collisions")
     add_defs("repeated_collisions")
-    # add_defs("multiplier") TODO: needs to be finished
+    add_defs("multiplier")
     add_defs("mat_name_color")
     add_defs("reg_name")
     add_defs("counter")
@@ -241,7 +247,11 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), parame
 
     inp += raw
 
-    return inp
+    if _max_line_len(inp) > 200:
+        raise RuntimeError("PHITS line limit reached.")
+    else:
+        return inp
+
 
 
 
@@ -271,6 +281,7 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
     """
     with tf.TemporaryDirectory() as newdir:
         inp = make_input(cells, sources, tallies, **make_input_kwargs)
+        name = os.path.join(newdir, filename)
         with open(os.path.join(newdir, filename), "w") as inp_file:
             inp_file.write(inp)
 
@@ -278,6 +289,7 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
             # TODO: PHITS actualy **DOESN'T FKING SET EXIT CODES ON ERROR** so will have to grep the output for "Error"...
             out = sp.run(["phits", filename], capture_output=True, text=True, cwd=newdir)
             assert not re.search("(?i:Error)", out.stdout), "PHITS Error." # this REALLY sucks. Thank PHITS.
+            assert out.returncode == 0, "PHITS Error"
         except AssertionError as error:
             r = f"PHITS exited with code {out.returncode}.\n"
             r += f"stdout: {out.stdout}\n"
@@ -293,13 +305,15 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
 
         result = dict()
         for t in tallies:
-            dfile = newdir
+
+            dfile = ""
             if t.name == "t-cross":
-                dfile += f"cross{t.index}_dmp"
+                dfile = os.path.join(newdir, f"cross{t.index}_dmp")
             elif t.name == "t-product":
-                dfile += f"product{t.index}_dmp"
+                dfile = os.path.join(newdir, f"product{t.index}_dmp")
             elif t.name == "t-time":
-                dfile += f"time{t.index}_dmp"
+                dfile = os.path.join(newdir, f"time{t.index}_dmp")
+            breakpoint()
             result[t] = read_dump(dfile, t.data, return_type)
 
 

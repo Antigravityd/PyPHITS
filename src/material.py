@@ -1,27 +1,31 @@
 import sys
 from base import *
 
+
 # TODO: how the libraries work isn't well-documented. Is there a single library set for the whole material, or
 # does one set a library after each element of the compositon? Can the thermal neutron library be set anywhere?
+# TODO: temporarily setting the composition to be integer-only to cut down on length.
 class Material(PhitsObject): # Composition is a list of pairs of (<element name string>, <ratio>) e.g. ("8Li", 0.5)
     name = "material"
-    syntax = {"composition": (None, List(Tuple(Nuclide(), PosReal())), 0),
+    syntax = {"composition": (None, List(Tuple(Nuclide(), PosInt())), 0),
               "gas": ("GAS", Choice10(), None),
-              "electron_step": ("ESTEP", Integer(), None), # TODO: check integer right
-              "neutron_lib": ("NLIB", Integer(), None),
-              "photon_lib": ("PLIB", Integer(), None),
-              "electron_lib": ("ELIB", Integer(), None),
-              "proton_lib": ("HLIB", Integer(), None),
+              "electron_step": ("ESTEP", PosInt(), None), # TODO: check integer right
+              # "neutron_lib": ("NLIB", LibraryID(), None),
+              # "photon_lib": ("PLIB", LibraryID(), None),
+              # "electron_lib": ("ELIB", LibraryID(), None),
+              # "proton_lib": ("HLIB", LibraryID(), None),
               "conductor": ("COND", FinBij({False: -1, True: 1}), None),
               "thermal_lib": (None, Integer(), None),
-              "chemical": ("chem", List(Tuple(Chemical(), PosReal())), None), # TODO: chemical
+              "chemical": ("chem", List(Tuple(Chemical(), PosInt())), None),
               }
     shape = lambda self: (f"MAT[{self.index}]",
                           "".join(map(lambda tup: f"{tup[0]} {tup[1]} ", self.composition)),
-                          "gas", "electron_step", "neutron_lib", "photon_lib", "electron_lib", "proton_lib", "conductor",
+                          "gas", "electron_step", # "neutron_lib", "photon_lib", "electron_lib", "proton_lib",
+                          "conductor",
                           "chem = " + " ".join(ch + " " + str(den) for ch, den in self.chemical) if self.chemical is not None \
                           else "",
-                          f"MT{self.index} {self.thermal_lib}" if self.thermal_lib is not None else "")
+                          #f"MT{self.index} {self.thermal_lib}" if self.thermal_lib is not None else ""
+                          )
 
     subobjects = ["time_change", "data_max"]
 

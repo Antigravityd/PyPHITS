@@ -33,7 +33,7 @@ class DumpFluence(PhitsObject):
 
     shape = lambda self: ((f"{self.out.index}", f"{self.into.index}", "area"),)
 
-    group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
+    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_bounds, self.angle_bounds,
                              self.time_bounds)
     separator = lambda self: self.section_title()
 

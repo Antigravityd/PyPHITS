@@ -30,7 +30,7 @@ class NeutronMagneticField(PhitsObject):
               "time": (None, PosReal(), None, "non"),
               }
     superobjects = ["cell"]
-    prelude = (("reg", "'typ", "'gap", "mgf", "trcl", "polar", "time"),)
+    prelude = (("reg", "'typ", "'gap", "mgf", "trcl", "polar", "'time"),)
     shape = (("cell", "typ", "gap", "strength", "transform", "polarization", "time"),)
 
     group_by = lambda self: type(self).__name__
@@ -236,7 +236,7 @@ class RepeatedCollisions(PhitsObject):
 
 
 
-# TODO: finish this
+
 class Multiplier(PhitsObject):
     name = "multiplier"
     syntax = {"particles": ("part", List(Particle()), 0),
@@ -277,10 +277,10 @@ class Counter(PhitsObject):
 
 class Timer(PhitsObject):
     name = "timer"
-    syntax = {"entry": (None, Integer(), None),
-              "exit": (None, Integer(), None),
-              "collision": (None, Integer(), None),
-              "reflection": (None, Integer(), None),
+    syntax = {"entry": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
+              "exit": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
+              "collision": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
+              "reflection": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
               }
     superobjects = ["cell"]
     prelude = (("reg", "in", "out", "coll", "ref"),)

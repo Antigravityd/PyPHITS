@@ -9,12 +9,14 @@ class Transform(PhitsObject): #
     """
     name = "transform"
     syntax = {"translation": (None, vector, 0),
-              "rotation": (None, OrthogonalMatrix(), 1),
-              "rotate_first": (None, FinBij({True: 1, False: -1}), None),
+              "rotation": (None, vector, 1),
+              "rotate_first": (None, FinBij({True: 2, False: -2}), None),
               "units": (None, FinBij({"degrees": "degrees", "radians": "radians"}), None)}
     shape = lambda self: ((f"*TR{self.index}" if self.units == "degrees" else f"TR{self.index}",
                            " ".join(str(i) for i in self.translation),
-                           " ".join(" ".join(str(j) for j in i) for i in self.rotation), "rotate_first"),)
+                           " ".join(str(i) for i in self.rotation),
+                           "0 0 0 0 0 0",
+                           "rotate_first"),)
 
 
 
