@@ -1,5 +1,6 @@
 from functools import partial
 from hypothesis.strategies import *
+from hypothesis import assume
 import re
 from scipy.stats import ortho_group
 import numpy as np
@@ -10,6 +11,7 @@ from numpy.linalg import det
 
 
 class ValSpec():
+    # in principle, this'd be cleaner were it a class attribute.
     def __init__(self, strat):
         self.strat = strat
     def __or__(self, other):
@@ -246,14 +248,34 @@ class FinBij(ValSpec):
         return f"one of the keys in {self.dic}, with the value being the corresponding PHITS value"
 
 
+@composite
+def builds_right(draw, cl, re, op):
+    try:
+        ob = draw(builds(cl, *re, **op))
+    except ValueError as e:
+        ob = None
+
+    assume(ob)
+    return ob
+
 class IsA(ValSpec):
     def __init__(self, cls, index=False):
-        req = list(map(lambda tup: tuples(*[i.strat for i in tup[1]]) if isinstance(tup[1], tuple) else tup[1].strat,
-                       sorted([v for k, v in cls.syntax.items() if v[2] is not None], key=lambda tup: tup[2])))
-        opt = dict(map(lambda tup: (tup[0], tuples(*[i.strat for i in tup[1][1]]) if isinstance(tup[1][1], tuple) else tup[1][1].strat),
-                       [(k, v) for k, v in cls.syntax.items() if v[2] is None]))
+        req = []
+        for phits_iden, valspec, idx, *s in sorted((v for v in cls.syntax.values() if v[2] is not None), key=lambda t: t[2]):
+            if isinstance(valspec, tuple):
+                req.append(tuples(*[i.strat for i in valspec]))
+            else:
+                req.append(valspec.strat)
 
-        super().__init__(builds(cls, *req, **opt)) # TODO: sus
+        opt = dict()
+        for py_iden, (phits_iden, valspec, idx, *s) in filter(lambda t: t[1][2] is None, cls.syntax.items()):
+            if isinstance(valspec, tuple):
+                opt[py_iden] = one_of(none(), tuples(*[i.strat for i in valspec]))
+            else:
+                opt[py_iden] = one_of(none(), valspec.strat)
+
+
+        super().__init__(builds_right(cls, req, opt)) # TODO: sus
         self.cls = cls
         self.index = index
 
@@ -484,43 +506,27 @@ elements = {1: ('H', 'Hydrogen', ((1, '50c'), (2, '50c'), (0, '50p'), (0, '50e')
                                        (254, '50c'), (0, '50p'), (0, '50e'))),
             99: ('Es', 'Einsteinium', ((251, '50c'), (252, '50c'), (253, '50c'), (254, '50c'), (294, '50c'), (255, '50c'), (0, '50p'),
                                        (0, '50e'))),
-            100: ('Fm', 'Fermium', ((255, '50c'), (0, '50p'), (0, '50e'))),
-            101: ('Md', 'Mendelevium'),
-            102: ('No', 'Nobelium'),
-            103: ('Lr', 'Lawrencium'),
-            104: ('Rf', 'Rutherfordium'),
-            105: ('Db', 'Dubnium'),
-            106: ('Sg', 'Seaborgium'),
-            107: ('Bh', 'Bohrium'),
-            108: ('Hs', 'Hassium'),
-            109: ('Mt', 'Meitnerium'),
-            110: ('Ds', 'Darmstadtium'),
-            111: ('Rg', 'Roentgenium'),
-            112: ('Cn', 'Copernicium'),
-            113: ('Nh', 'Nihonium'),
-            114: ('Fl', 'Flerovium'),
-            115: ('Mc', 'Moscovium'),
-            116: ('Lv', 'Livermorium'),
-            117: ('Ts', 'Tennessine'),
-            118: ('Og', 'Oganesson')}
+            100: ('Fm', 'Fermium', ((255, '50c'), (0, '50p'), (0, '50e')))}
 
 particles = {2212: "proton", 2112: "neutron", 211: "pion+", 111: "pion0", -211: "pion-", -13: "muon+", 13: "muon-",
              321: "kaon+", 311: "kaon0", -321: "kaon-", 11: "electron", -11: "positron", 22: "photon",
-             12: 'e_neutrino', -12: 'e_antineutrino', 14: 'mu_neutrino', -14: 'mu_antineutrino', -2212: 'antiproton',
-             -2112: 'antineutron', -311: 'antikaon0', 221: 'eta', -221: 'antieta', 331: "eta'", 3122: 'lambda0',
-             -3122: 'antilambda0', 3222: 'sigma+', -3222: 'antisigma+', 3212: 'sigma0', -3212: 'antisigma0', 3112: 'sigma-',
-             -3112: 'antisigma-', 3322: 'xi0', -3322: 'antixi0', 3312: 'xi-', -3312: 'antixi-', 3334: 'omega-',
-             -3334: 'antiomega-'}
+             12: 'other', -12: 'other', 14: 'other', -14: 'other', -2212: 'other',
+             -2112: 'other', -311: 'other', 221: 'other', -221: 'other', 331: 'other', 3122: 'other',
+             -3122: 'other', 3222: 'other', -3222: 'other', 3212: 'other', -3212: 'other', 3112: 'other',
+             -3112: 'other', 3322: 'other', -3322: 'other', 3312: 'other', -3312: 'other', 3334: 'other',
+             -3334: 'other'}
 
 part_rev = {v: k for k, v in particles.items()}
 elsymbol_rev = {v[0]: k for k, v in elements.items()}
 elname_rev = {v[1]: k for k, v in elements.items()}
-# elweights_rev = {k: set(map(lambda x: x[0], v[]))}
+el_weights = {k: set(map(lambda x: x[0], v[2])) for k, v in elements.items()}
+j4_el_weights = {k: set(map(lambda x: x[0], v[2])) for k, v in \
+                 filter(lambda x: set(("50c", "51h")).issubset(set(map(lambda x: x[1], x[1][2]))),
+                        elements.items())}
 
 # Read in an ASCII dump file produced by a PHITS tally
 def kf_decode(n: int) -> str:
     """Given a kf-code of a particle, return a human-readable string description."""
-
     if n in particles:
         return particles[n]
     elif n > 1000000:
@@ -532,34 +538,48 @@ def kf_decode(n: int) -> str:
 
 def kf_encode(part: str) -> int:
     """Given a particle name, return the kf-code."""
-    assert isinstance(part, str), f"Invalid particle {part}. 1"
+    assert isinstance(part, str), f"Invalid particle {part}; must be a string."
     if part in part_rev:
         return part_rev[part]
+
+    elif part in elsymbol_rev:
+        return int(elsymbol_rev[part]) * 1_000
+
+    elif part in elname_rev:
+        return int(elname_rev[part]) * 1_000
+
     elif len(re.split("-", part)) == 2: # element-weight
         pts = re.split("-", part)
-        assert len(pts) == 2, f"Invalid particle {part}. 2"
-        if pts[0] in elsymbol_rev:
-            elt = elsymbol_rev[pts[0]]
+        assert len(pts) == 2, f"Invalid particle {part}; must be of the form 208Pb or Pb-208 (more than two components)."
+        capped = pts[0].title()
+        if capped in elsymbol_rev:
+            elt = elsymbol_rev[capped]
             weight = int(pts[1])
-            return elt * 1_000_000 + weight
-        elif pts[0] in elname_rev:
-            elt = elname_rev[pts[0]]
+            assert weight in el_weights[elt], f"Unsupported isotope {part}; acceptable values are {el_weights[elt]}."
+            return f"{elt}{weight:03d}"
+        elif capped in elname_rev:
+            elt = elname_rev[capped]
             weight = int(pts[1])
-            return elt * 1_000_000 + weight
+            assert weight in el_weights[elt], f"Unsupported isotope {part}; acceptable atomic weights are {el_weights[elt]}."
+            return f"{elt}{weight:03d}"
         else:
-            raise ValueError(f"Invalid particle {part}. 3")
+            raise ValueError(f"Invalid particle {part}; must be of the form 208Pb or Pb-208 (symbol or name not found).")
+
     elif m := re.match(r"([1-9][0-9]{,2})([a-zA-Z]+)", part):
-        if m[2] in elsymbol_rev:
-            elt = elsymbol_rev[m[2]]
+        capped = m[2].title()
+        if capped in elsymbol_rev:
+            elt = elsymbol_rev[capped]
             weight = int(m[1])
-            return elt * 1_000_000 + weight
-        elif m[2] in elname_rev:
-            elt = elname_rev[m[2]]
+            return f"{elt}{weight:03d}"
+        elif capped in elname_rev:
+            elt = elname_rev[capped]
             weight = int(m[1])
+            return f"{elt}{weight:03d}"
         else:
-            raise ValueError(f"Invalid particle {part}. 4")
+            raise ValueError(f"Invalid particle {part}; must be of the form 208Pb or Pb-208 (symbol or name not found).")
+
     else:
-        raise ValueError(f"Invalid particle {part}. 5")
+        raise ValueError(f"Invalid particle {part}.")
 
 
 
@@ -603,23 +623,67 @@ class Nuclide(ValSpec):
         @composite
         def symbol_hyphen_weight(draw):
             sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
-            weight = draw(integers(min_value=1, max_value=294))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elsymbol_rev[sym]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
             return f"{sym}-{weight}"
 
         @composite
         def weight_then_symbol(draw):
             sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
-            weight = draw(integers(min_value=1, max_value=294))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elsymbol_rev[sym]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
             return f"{weight}{sym}"
 
-        super().__init__(one_of(symbol_hyphen_weight(), weight_then_symbol())) # in principle, this'd be cleaner were it a class attribute.
+        @composite
+        def symbol_alone(draw):
+            sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
+            assume(0 in map(lambda x: x[0], elements[elsymbol_rev[sym]][2]))
+            return f"{sym}"
+
+        @composite
+        def name_hyphen_weight(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elname_rev[name]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
+            return f"{name}-{weight}"
+
+        @composite
+        def weight_then_name(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elname_rev[name]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
+            return f"{weight}{name}"
+
+        @composite
+        def name_alone(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+            assume(0 in map(lambda x: x[0], elements[elname_rev[name]][2]))
+            return f"{name}"
+
+
+
+
+        super().__init__(one_of(symbol_hyphen_weight(), weight_then_symbol(), symbol_alone(),
+
+                                name_hyphen_weight(), weight_then_name(), name_alone()))
 
     def phits(self, val):
         try:
-            assert val not in part_rev, f"Invalid nuclide {val}."
+            assert val not in part_rev, f"Particle {val} is not a nuclide."
             return kf_encode(val)
-        except (AssertionError, ValueError):
-            return partial(lambda va, var: ValueError(f"`{var}` must be a valid nuclide; got {va}"), val)
+        except (AssertionError, ValueError) as e:
+
+            return partial(lambda va, er, var: ValueError(f"`{var}` must be a valid nuclide; {va} resulted in error:\n{er}"),
+                           val, e)
 
 
     def python(self, val):
@@ -627,6 +691,106 @@ class Nuclide(ValSpec):
 
     def description(self):
         return "a nucleide in the form 208Pb, 208Lead, Pb-208, or Lead-208"
+
+
+class JENDL4Nuclide(ValSpec):
+    def __init__(self):
+        @composite
+        def symbol_hyphen_weight(draw):
+            sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elsymbol_rev[sym]][2])))
+            assume(len(wgts) > 0) # TODO: necessary?
+            weight = draw(sampled_from(list(wgts)))
+            return f"{sym}-{weight}"
+
+        @composite
+        def weight_then_symbol(draw):
+            sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elsymbol_rev[sym]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
+            return f"{weight}{sym}"
+
+        @composite
+        def symbol_alone(draw):
+            sym = draw(sampled_from(list(map(lambda x: x[1][0], elements.items()))))
+            assume(elsymbol_rev[sym] in j4_el_weights)
+            assume(0 in map(lambda x: x[0], elements[elsymbol_rev[sym]][2])) # TODO: necessary?
+            return f"{sym}"
+
+        @composite
+        def name_hyphen_weight(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elname_rev[name]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
+            return f"{name}-{weight}"
+
+        @composite
+        def weight_then_name(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+
+            wgts = list(filter(lambda x: x != 0,
+                               map(lambda x: x[0], elements[elname_rev[name]][2])))
+            assume(len(wgts) > 0)
+            weight = draw(sampled_from(list(wgts)))
+            return f"{weight}{name}"
+
+        @composite
+        def name_alone(draw):
+            name = draw(sampled_from(list(map(lambda x: x[1][1], elements.items()))))
+            assume(elname_rev[name] in j4_el_weights)
+            assume(0 in map(lambda x: x[0], elements[elname_rev[name]][2])) # TODO: necessary?
+            return f"{name}"
+
+
+
+
+        super().__init__(one_of(symbol_hyphen_weight(), weight_then_symbol(), symbol_alone(),
+
+                                name_hyphen_weight(), weight_then_name(), name_alone()))
+
+    def phits(self, val):
+        try:
+            assert val not in part_rev, f"Particle {val} is not a nuclide."
+            return kf_encode(val)
+        except (AssertionError, ValueError) as e:
+
+            return partial(lambda va, er, var: ValueError(f"`{var}` must be a valid nuclide; {va} resulted in error:\n{er}"),
+                           val, e)
+
+
+    def python(self, val):
+        return val
+
+    def description(self):
+        return "a nucleide in the form 208Pb, 208Lead, Pb-208, or Lead-208"
+
+
+material_libs = ['lmeth.20t', 'lwtr.20t', 'be.24t', 'smeth.20t', 'grph.22t', 'grph.26t', 'beo.25t', 'benz.25t', 'beo.21t', 'hwtr.25t',
+                 'grph.29t', 'beo.24t', 'be.20t', 'zr_h.25t', 'hwtr.21t', 'dpara.20t', 'grph.28t', 'zr_h.27t', 'be.22t', 'beo.23t',
+                 'benz.27t', 'grph.25t', 'lwtr.22t', 'grph.27t', 'hwtr.24t', 'h_zr.26t', 'h_zr.23t', 'h_zr.20t', 'grph.23t', 'be.27t',
+                 'poly.21t', 'benz.26t', 'hwtr.23t', 'grph.20t', 'lwtr.21t', 'grph.21t', 'zr_h.22t', 'h_zr.24t', 'benz.24t', 'hwtr.27t',
+                 'beo.22t', 'hwtr.22t', 'zr_h.24t', 'be.26t', 'lwtr.25t', 'be.25t', 'benz.20t', 'dortho.20t', 'hortho.20t', 'benz.21t',
+                 'lwtr.23t', 'beo.26t', 'lwtr.27t', 'hwtr.20t', 'grph.24t', 'beo.20t', 'zr_h.20t', 'be.21t', 'beo.27t', 'h_zr.22t',
+                 'zr_h.21t', 'lwtr.26t', 'benz.22t', 'h_zr.25t', 'benz.23t', 'zr_h.26t', 'hpara.20t', 'be.23t', 'hwtr.26t', 'lwtr.24t',
+                 'poly.20t', 'zr_h.23t', 'h_zr.27t', 'h_zr.21t']
+
+class ThermalLib(ValSpec):
+    def __init__(self):
+        super().__init__(sampled_from(material_libs))
+
+    def phits(self, val):
+        if val in material_libs:
+            return val
+        else:
+            return partial(lambda va, var: ValueError(f"`{var}` must be a valid material library; got {va}."), val)
+
+    def description(self):
+        return "a material thermal neutron scattering law library identifier"
 
 chemicals = ["H20", "CO2", "NH2", "NH3", "SF6", "TeF6", "CH4", "CH3", "C2H2", "C2H4", "C2H6", "C6H6", "CH32N3"]
 class Chemical(ValSpec):
@@ -715,3 +879,27 @@ class Text(ValSpec):
 
     def description(self):
         return "a string"
+
+
+named_colors = ["white", "lightgray", "gray", "darkgray", "matblack", "black", "red", "orange", "yellow", "green", "cyan", "blue",
+                "violet", "magenta", "darkred", "pink", "pastelpink", "orange", "brown", "darkbrown", "pastelbrown", "orangeyellow",
+                "camel", "pastelyellow", "yellow", "pastelgreen", "yellowgreen", "green", "darkgreen", "mossgreen", "bluegreen",
+                "pastelcyan", "pastelblue", "cyan", "cyanblue", "violet", "purple", "magenta", "winered", "pastelmagenta",
+                "pastelpurple", "pastelviolet"]
+class Color(ValSpec):
+    def __init__(self):
+        super().__init__(one_of(sampled_from(named_colors),
+                                tuples(floats(min_value=0, max_value=1, allow_nan=False, allow_infinity=False, allow_subnormal=False),
+                                       floats(min_value=0, max_value=1, allow_nan=False, allow_infinity=False, allow_subnormal=False),
+                                       floats(min_value=0, max_value=1, allow_nan=False, allow_infinity=False, allow_subnormal=False))))
+
+    def phits(self, val):
+        if val in named_colors :
+            return val
+        elif isinstance(val, tuple) and len(val) == 3 and all(map(lambda x: 0 <= x <= 1, val)):
+            return f"{{ {val[0]} {val[1]} {val[2]} }}"
+        else:
+            return partial(lambda va, var: ValueError(f"`{va}` must be a valid color; got {val}."), val)
+
+    def description(self):
+        return "a color"

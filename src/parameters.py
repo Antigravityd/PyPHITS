@@ -297,8 +297,8 @@ class Parameters():
 
         assert not extra, f"Unrecognized parameters {extra} in initialization of Parameters object." \
             "Check that the correct parameters were passed to other objects."
-        for k, (_, spec, _) in self.syntax:
-            if k in kwargs:
+        for k, (_, spec, _) in self.syntax.items():
+            if k in kwargs and kwargs[k] is not None:
                 if isinstance(spec, tuple):
                     map(lambda x: spec.phits(x), kwargs[k])
                 else:

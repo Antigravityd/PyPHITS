@@ -1,6 +1,7 @@
 import sys
 from base import *
 from transform import *
+from surface import surface_spec
 
 # no temperature; do that at the cell level for now
 
@@ -8,13 +9,13 @@ class MagneticField(PhitsObject): # Right now, the only way to set this is to do
     name = "magnetic_field"
     syntax = {"typ": (None, FinBij({"dipole": 2, "quadrupole": 4}), 0),
               "strength": (None, Real(), 1),
-              "gap": (None, PosReal(), None, 0.0),
+              "calc_freq": (None, PosReal(), None, 0.0),
               "transform": (None, IsA(Transform, index=True), None, 0),
               "time": (None, PosReal(), None, "non"),
               }
     superobjects = ["cell"]
     prelude = (("reg", "'typ", "'gap", "mgf", "trcl", "'time"),)
-    shape = (("cell", "typ", "gap", "strength", "transform", "time"),)
+    shape = (("cell", "typ", "calc_freq", "strength", "transform", "time"),)
 
     group_by = lambda self: type(self).__name__
     separator = lambda self: self.section_title()
@@ -24,14 +25,14 @@ class NeutronMagneticField(PhitsObject):
     syntax = {"typ": (None, FinBij({"identified": 60, "nograv": 61, "dipole": 102,
                                     "quadrupole": 104, "sextupole": 106}), 0),
               "strength": (None, Real(), 1),
-              "gap": (None, PosReal(), None, 0.0),
+              "calc_freq": (None, PosReal(), None, 0.0),
               "polarization": (None, Real(), None, "non"),
               "transform": (None, IsA(Transform, index=True), None, 0),
               "time": (None, PosReal(), None, "non"),
               }
     superobjects = ["cell"]
     prelude = (("reg", "'typ", "'gap", "mgf", "trcl", "polar", "'time"),)
-    shape = (("cell", "typ", "gap", "strength", "transform", "polarization", "time"),)
+    shape = (("cell", "typ", "calc_freq", "strength", "transform", "polarization", "time"),)
 
     group_by = lambda self: type(self).__name__
     separator = lambda self: self.section_title()
@@ -84,7 +85,7 @@ class MappedElectromagneticField(PhitsObject):
               "m_transform": (None, IsA(Transform, index=True), None, 0)}
     superobjects = ["cell"]
     prelude = (("reg", "type", "typm", "gap", "elf", "mgf", "trcle", "trclm", "filee", "filem"),)
-    shape = (("cell", "typ_e", "typ_m", "gap", "e_strength", "m_strength", "e_transform", "m_transform", "e_file", "m_file"),)
+    shape = (("cell", "typ_e", "typ_m", "calc_freq", "e_normalization", "m_normalization", "e_transform", "m_transform", "e_file", "m_file"),)
 
     group_by = lambda self: type(self).__name__
     separator = lambda self: self.section_title()
@@ -110,31 +111,32 @@ class TrackStructure(PhitsObject):
 
 
 
-class SuperMirror(PhitsObject):
-    name = "super_mirror"
-    syntax = {"reflection_surface": ((None, None), (PosReal(), PosReal()), 0),
-              "material_constant": (None, Real(), 1),
-              "reflectivity": (None, Real(), 2),
-              "critical_q": (None, Real(), 3),
-              "falloff_rate": (None, Real(), 4),
-              "cutoff_width": (None, PosReal(), 5)}
-    superobjects = ["cell"]
-    prelude = (("r-in", "r-out", "mm", "r0", "qc", "am", "wm"),)
-    shape = (("reflection_surface", "material_constant", "reflectivity", "critical_q", "falloff_rate", "cutoff_width"),)
-
-
-
-# refactor pending whether user Fortran routines are to be supported
-# class ElasticOption(PhitsObject):
-#     name = "elastic_option"
-#     syntax = {""}
-#     required = ["c1", "c2", "c3", "c4"]
-#     positional = ["c1", "c2", "c3", "c4"]
-#     optional = ["cell"]
-#     shape = (("cell", "c1", "c2", "c3", "c4"))
+# TODO: seemingly irremovable circularity here (it wants cells, not surfaces for reflection_surface)
+# class SuperMirror(PhitsObject):
+#     name = "super_mirror"
+#     syntax = {"reflection_surface": ((None, None), (surface_spec, surface_spec), 0),
+#               "material_constant": (None, Real(), 1),
+#               "reflectivity": (None, Real(), 2),
+#               "critical_q": (None, Real(), 3),
+#               "falloff_rate": (None, Real(), 4),
+#               "cutoff_width": (None, PosReal(), 5)}
 #     superobjects = ["cell"]
-# prelude = (("reg", "\\c1", "\\c2", "\\c3", "\\c4"))
-#     nones = {"c1": "non", "c2": "non", "c3": "non", "c4": "non"}
+#     prelude = (("r-in", "r-out", "mm", "r0", "qc", "am", "wm"),)
+#     shape = (("reflection_surface", "material_constant", "reflectivity", "critical_q", "falloff_rate", "cutoff_width"),)
+
+
+
+class ElasticOption(PhitsObject):
+    name = "elastic_option"
+    syntax = {"c1": (None, PosReal(), 1),
+              "c2": (None, PosReal(), 2),
+              "c3": (None, PosReal(), 3),
+              "c4": (None, PosReal(), 4)}
+
+    prelude = (("reg", "'c1", "'c2", "'c3", "'c4"),)
+    shape = (("cell", "c1", "c2", "c3", "c4"),)
+    superobjects = ["cell"]
+
 
 
 class FragData(PhitsObject):
@@ -161,6 +163,9 @@ class Importance(PhitsObject):
     separator = lambda self: self.section_title()
     max_groups = 6
 
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"Importance particles must not be duplicates; got {self.particles}.")
 
 
 class WeightWindow(PhitsObject):
@@ -172,12 +177,16 @@ class WeightWindow(PhitsObject):
     superobjects = ["cell"]
     prelude = lambda self: ("mesh = reg", "particles",
                             f"eng = {len(self.windows)}" if self.variable == "energy" else f"tim = {len(self.windows)}",
-                            " ".join(map(lambda t: t[0], self.windows)),
+                            " ".join(map(lambda t: str(t[0]), self.windows)),
                             ("reg", " ".join(f"ww{i}" for i in range(1, len(self.windows) + 1))))
-    shape = lambda self: (("cell", " ".join(map(lambda t: str(t[1]), self.windows))))
+    shape = lambda self: (("cell", " ".join(map(lambda t: str(t[1]), self.windows))),)
     group_by = lambda self: (self.particles, self.variable)
     separator = lambda self: self.section_title()
     max_groups = 6
+
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"WeightWindow particles must not be duplicates; got {self.particles}.")
 
 
 class WWBias(PhitsObject):
@@ -186,12 +195,16 @@ class WWBias(PhitsObject):
               "biases": (None, List(Tuple(PosReal(), PosReal())), 1),
               }
     superobjects = ["cell"]
-    prelude = lambda self: ("particles", f"eng = {len(self.biases)}", " ".join(map(lambda t: t[0], self.biases)),
+    prelude = lambda self: ("particles", f"eng = {len(self.biases)}", " ".join(map(lambda t: str(t[0]), self.biases)),
                             ("reg", " ".join(f"wwb{i}" for i in range(1, len(self.biases) + 1))))
     shape = lambda self: (("cell", " ".join(map(lambda t: str(t[1]), self.biases))),)
     group_by = lambda self: self.particles
     separator = lambda self: self.section_title()
     max_groups = 6
+
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"WWBias particles must not be duplicates; got {self.particles}.")
 
 
 
@@ -199,18 +212,22 @@ class WWBias(PhitsObject):
 class ForcedCollisions(PhitsObject):
     name = "forced_collisions"
     syntax = {"particles": ("part", List(Particle()), 0),
-              "factor": (None, PosReal(), 1),
+              "factor": (None, RealBetween(0, 1), 1),
               "force_secondaries": (None, FinBij({True: 1, False: -1}), None),
               }
 
     superobjects = ["cell"]
     prelude = ("particles", ("reg", "fcl"))
-    shape = lambda self: (("cell", f"{self.force_secondaries * self.factor}"),)
+    shape = lambda self: (("cell", f"{self.force_secondaries * self.factor}" if self.force_secondaries is not None \
+                           else str(self.factor)),)
 
     group_by = lambda self: self.particles
     separator = lambda self: self.section_title()
     max_groups = 6
 
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"ForcedCollisions particles must not be duplicates; got {self.particles}.")
 
 
 class RepeatedCollisions(PhitsObject):
@@ -226,15 +243,30 @@ class RepeatedCollisions(PhitsObject):
     prelude = lambda self: ("particles",
                             f"mother = {len(self.mother)}" if self.mother else "",
                             " ".join(self.mother) if self.mother else "",
-                            "ebounds", ("reg", "n-coll", "n-evaps"))
+                            "ebounds", ("reg", "n-coll", "n-evap"))
     shape = (("cell", "collision_reps", "evaporation_reps"),)
 
     group_by = lambda self: (self.particles, self.mother)
     separator = lambda self: self.section_title()
     max_groups = 6
 
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"RepeatedCollisions particles must not be duplicates; got {self.particles}.")
 
+        if self.collision_reps * self.evaporation_reps <= 1 or self.collision_reps * self.evaporation_reps >= 2_147_483_647:
+            raise ValueError(f"RepeatedCollisions' product of repititions must be more than 1 as an int32;"
+                             f" got collsion_reps={self.collision_reps} and evaporation_reps={self.evaporation_reps}.")
+        if self.ebounds is not None and self.ebounds[0] >= self.ebounds[1]:
+            raise ValueError(f"RepeatedCollisions' ebounds must be ordered; got {self.ebounds}.")
 
+        # Doesn't work because cell isn't set at __init__
+        # possible = set(map(lambda x: kf_encode(x[0]), self.cell.material.composition))
+        # if any(kf_encode(x) not in possible for x in self.mother):
+        #     raise ValueError(f"RepeatedCollisions' mother nuclei must be among its cell's material's nuclei;"
+        #                      f" got {set(mother) - possible} extra.")
+
+        # Also, mother nuclei must be present in the material of the relevant cells...don't know how to test.
 
 
 class Multiplier(PhitsObject):
@@ -243,9 +275,12 @@ class Multiplier(PhitsObject):
               "semantics": ("interpolation", FinBij({"linear": "lin", "log": "log", "left_histogram": "glow",
                                                      "right_histogram": "ghigh"}), 1),
               "bins": (None, List(Tuple(PosReal(), PosReal())), 2)}
-    shape = lambda self: (f"number = -{200 + self.index}", "interpolation", "particles", f"ne = {len(self.bins)}",
+    shape = lambda self: (f"number = -{200 + self.index}", "semantics", "particles", f"ne = {len(self.bins)}",
                           "\n".join(map(lambda t: f"{t[0]} {t[1]}", self.bins)))
 
+    def restrictions(self):
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"Multipleir particles must not be duplicates; got {self.particles}.")
 
 
 class RegionName(PhitsObject):
@@ -258,29 +293,37 @@ class RegionName(PhitsObject):
 
 
 
+# TODO: optional arguments?
 class Counter(PhitsObject):
     name = "counter"
     syntax = {"particles": ("part", List(OneOf(Particle(), Nuclide())), 0),
-              "entry": (None, Integer(), None, "non"),
-              "exit": (None, Integer(), None, "non"),
-              "collision": (None, Integer(), None, "non"),
-              "reflection": (None, Integer(), None, "non"),
+              "entry": (None, Between(-9999, 10000), 1),
+              "exit": (None, Between(-9999, 10000), 2),
+              "collision": (None, Between(-9999, 10000), 3),
+              "reflection": (None, Between(-9999, 10000), 4),
               }
 
     superobjects = ["cell"]
     prelude = ("particles", ("reg", "in", "out", "coll", "ref"))
     shape = (("cell", "entry", "exit", "collision", "reflection"),)
 
-    group_by = lambda self: self.particles # TODO: grouping separator stuff sus
-    separator = lambda self: f"counter = {self.index}"
+    group_by = lambda self: self.particles
+    separator = lambda self: self.section_title() + f"counter = {self.index}\n"
     max_groups = 3
+
+    def restrictions(self):
+        if len(self.particles) > 20:
+            raise ValueError(f"Counter particles must not exceed 20; got {len(self.particles)}.")
+        if len(set(self.particles)) != len(self.particles):
+            raise ValueError(f"Counter particles must not be duplicates; got {self.particles}.")
+
 
 class Timer(PhitsObject):
     name = "timer"
-    syntax = {"entry": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
-              "exit": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
-              "collision": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
-              "reflection": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), None),
+    syntax = {"entry": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), 1),
+              "exit": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), 2),
+              "collision": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), 3),
+              "reflection": (None, FinBij({"zero": -1, "nothing": 0, "stop": 1}), 4),
               }
     superobjects = ["cell"]
     prelude = (("reg", "in", "out", "coll", "ref"),)

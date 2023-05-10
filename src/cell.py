@@ -28,14 +28,14 @@ def outer_void(tup):
     return "~ (" + " : ".join(map(lambda x: tup_to_def((x,)), tup)) + ")"
 
 
-subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True),
-                                                   IsA(MappedMagneticField, index=True)), None),
-                    "electromagnetic_field": (None, OneOf(IsA(UniformElectromagneticField, index=True),
-                                                          IsA(MappedElectromagneticField, index=True)), None),
+subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True),), None),
+                                                   # IsA(MappedMagneticField, index=True)), None),
+                    "electromagnetic_field": (None, OneOf(IsA(UniformElectromagneticField, index=True),), None),
+                                                          # IsA(MappedElectromagneticField, index=True)), None),
                     "delta_ray": (None, IsA(DeltaRay, index=True), None),
                     "track_structure": (None, IsA(TrackStructure, index=True), None),
-                    "super_mirror": (None, IsA(SuperMirror, index=True), None),
-                    # "elastic_option": (None, IsA(ElasticOption, index=True), None),
+                    # "super_mirror": (None, IsA(SuperMirror, index=True), None),
+                    "elastic_option": (None, IsA(ElasticOption, index=True), None),
                     "importance": (None, IsA(Importance, index=True), None),
                     "weight_window": (None, IsA(WeightWindow, index=True), None),
                     "ww_bias": (None, IsA(WWBias, index=True), None),

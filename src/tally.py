@@ -26,7 +26,7 @@ class DumpFluence(PhitsObject):
               "angle_semantics": ("iangform", FinBij({"to_normal": 0, "to_x": 1, "to_y": 2, "to_z": 3}), None),
               "time_bounds": ((None, None), (PosReal(), PosReal()), None)}
 
-    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = cross{self.index}", "factor", "output_type",
+    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = cross{self.index}", "factor", "output",
                             f"dump = -{len(self.data)}", " ".join([str(i) for i in self.data]),
                             "mesh = reg", f"reg = {self.group_size}",
                             ("r-from", "r-to", "'area"))

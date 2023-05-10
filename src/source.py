@@ -206,7 +206,9 @@ class TrianglePrism(PhitsObject):
                            else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth",
                           "dispersion", ("spectrum",))
 
-
+source_spec = OneOf(IsA(Cylindrical, index=True), IsA(Rectangular, index=True), IsA(Gaussian, index=True),
+                    IsA(GaussianPrism, index=True), IsA(Parabolic, index=True), IsA(ParabolicPrism, index=True),
+                    IsA(Spherical, index=True), IsA(Beam, index=True), IsA(Conical, index=True), IsA(TrianglePrism, index=True))
 
 # class Grid(PhitsObject):
 #     name = "source"

@@ -25,7 +25,7 @@ def _continue_lines(inp: str) -> str:
             length = 0
 
             remain = list(it.takewhile(lambda x: len(x[1]) < 175, enumerate(it.accumulate(words, lambda x, y: x + " " + y))))
-            contin = " ".join(words[remain[-1][0]:])
+            contin = " ".join(words[remain[-1][0]+1:])
             remain = remain[-1][1]
             if contin == "" or contin.isspace():
                 r += remain + "\n"
@@ -95,7 +95,7 @@ class PhitsObject:
     # """Attributes that don't affect the identity of a PhitsObject."""
 
     names = {"parameters", "source", "material", "surface", "cell", "transform", "temperature","mat_time_change","magnetic_field",
-             "electromagnetic_field", "frag_data",
+             "electromagnetic_field", "frag_data", "data_max",
              "delta_ray", "track_structure", "super_mirror", "elastic_option", "importance", "weight_window", "ww_bias",
              "forced_collisions", "repeated_collisions", "volume", "multiplier", "mat_name_color", "reg_name", "counter", "timer",
              "t-track", "t-cross", "t-point", "t-adjoint", "t-deposit", "t-deposit2", "t-heat", "t-yield", "t-product", "t-dpa",
@@ -129,8 +129,7 @@ class PhitsObject:
         # Handle required args
         required = list(map(lambda tup: tup[0],
                             sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
-        if type(self).__name__ == 'EnergyDistribution' and len(args) != len(required):
-            breakpoint()
+
         assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
         for idx, arg in enumerate(args):
             # Validate first

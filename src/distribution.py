@@ -64,7 +64,7 @@ class AngleDistribution(PhitsObject):
 
 class EnergyDistribution(PhitsObject):
     name = "source"
-    syntax = {"bins": (None, List(Tuple(PosReal(), PosReal(), PosReal())), None),
+    syntax = {"bins": (None, List(Tuple(PosReal(), PosReal(), PosReal())), 0),
               "adjust": (None, FinBij({"particles": "particles", "weights": "weights"}), None),
               "units": (None, FinBij({"MeV": "MeV", "Angstrom": "Angstrom"}), None),
               "normalize": (None, FinBij({"1/Lethargy": -1, "1/MeV": 1}), None), # TODO: check 1/MeV

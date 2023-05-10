@@ -58,10 +58,10 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
                     add_to_set(child, the_set, an_obj)
 
     add_to_set(cells, unique)
-
-
     add_to_set(sources, unique)
     add_to_set(tallies, unique)
+    add_to_set(cross_sections, unique)
+    add_to_set(multipliers, unique)
 
 
 
@@ -83,7 +83,10 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
                     "electromagnetic_field": [],
                     "delta_ray": [],
                     "track_structure": [],
-                    "super_mirror": [],
+                    # "super_mirror": [],
+                    "elastic_option": [],
+                    # "data_max": [],
+                    "frag_data": [],
                     "importance": [],
                     "weight_window": [],
                     "ww_bias": [],
@@ -135,27 +138,27 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     # Problem: while we've chosen a set of representatives for equivalence classes under PhitsObject.__eq__, the objects themselves
     # don't have subobjects with index attributes pointing to the representative---there will be None showing up all over the output.
     # Solution: replace all members of an equivalence class in the object tree with their representative (whose index is defined above).
-    representatives = {n: n for n in it.chain.from_iterable(type_divided.values())} # TODO: see if `for n in unique` works.
+    representatives = {n: n for n in it.chain.from_iterable(type_divided.values())} # necessary because `unique` doesn't have idx
 
-    def adjust_subobjects(an_obj, dic, prev=None): # Recursively replace redundant subtypes with the representative in the dict
-        if isinstance(an_obj, tuple):
+    def adjust_subobjects(an_obj, ason=(None, None)): # Recursively replace redundant subtypes with the representative in the dict
+        if isinstance(an_obj, col.Iterable):
             for ob in an_obj:
-                adjust_subobjects(ob, dic)
-        elif isinstance(an_obj, PhitsObject):
-            for name, child in an_obj.__dict__.items():
-                if isinstance(child, PhitsObject):
-                    representative = representatives[child]
-                    setattr(an_obj, name, representative)
-                    if child is not prev:
-                        adjust_subobjects(child, dic, an_obj)
+                if isinstance(ob, PhitsObject) and ob is not ason[1]:
+                    adjust_subobjects(ob)
 
-    adjust_subobjects(cells, representatives)
-    for cell in cells:
-        for i, sur in enumerate(cell.regions):
-            adjust_subobjects(sur, representatives)
-            cell.regions = tuple(representatives[s] for s in cell.regions)
-    adjust_subobjects(sources, representatives)
-    adjust_subobjects(tallies, representatives)
+        elif isinstance(an_obj, PhitsObject):
+            if ason != (None, None):
+                representative = representatives[an_obj]
+                setattr(ason[1], ason[0], representative)
+            for name, child in an_obj.__dict__.items():
+                if child is not ason[1]:
+                    adjust_subobjects(child, ason=(name, an_obj))
+
+    adjust_subobjects(cells)
+    adjust_subobjects(sources)
+    adjust_subobjects(tallies)
+    adjust_subobjects(cross_sections)
+    adjust_subobjects(multipliers)
 
 
     # Now, we can make the input file.
@@ -167,9 +170,9 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
                 objs = type_divided[obj_type]
                 type_rep = objs[0]
                 if hasattr(type_rep, "group_by") and callable(type_rep.group_by):
-                    grouped = it.groupby(sorted(objs, key=lambda x: x.group_by()), lambda x: x.group_by())
+                    grouped = [(k, list(v)) for k, v in it.groupby(sorted(objs, key=lambda x: x.group_by()), lambda x: x.group_by())]
                     if hasattr(type_rep, "max_groups") and type_rep.max_groups is not None:
-                        assert len(list(grouped)) <= type_rep.max_groups, ValueError(f"Too many {obj_type} groups.")
+                        assert len(grouped) <= type_rep.max_groups, ValueError(f"Too many {obj_type} groups.")
                     for key, group in grouped:
                         group = list(group)
                         inp += group[0].separator()
@@ -223,12 +226,12 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     add_defs("transform")
     add_defs("mat_time_change")
     add_defs("magnetic_field")
-    add_defs("neutron_magnetic_field")
-    add_defs("mapped_magnetic_field")
-    add_defs("uniform_electromagnetic_field")
-    add_defs("mapped_electromagnetic_field")
+    add_defs("electromagnetic_field")
     add_defs("delta_ray")
     add_defs("track_structure")
+    # add_defs("super_mirror")
+    add_defs("elastic_option")
+    # add_defs("data_max")
     add_defs("frag_data")
     add_defs("importance")
     add_defs("weight_window")
@@ -243,7 +246,6 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     add_defs("t-cross")
     add_defs("t-product")
     add_defs("t-time")
-    # ... more tallies would require more complicated parsing of the output files
 
     inp += raw
 

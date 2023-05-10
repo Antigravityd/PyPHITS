@@ -206,11 +206,19 @@ It's then a simple matter of constructing the string representing the input file
 
 I originally intended to fully support all of the tallies available in PHITS. However, this would require developing a full-featured parser for the AnGeL files so-generated, as in order to support the Python integration, the contained data would need to be extracted. However, this proved to be rather involved; the decaying remains of this parser are still in the =angel= subdirectory, should it ever be useful in the future. Instead of doing this, I moved to allowing only the three tallies for which one can specify the =dump= option, as this produces a sensible, easily machine-readable file containing exactly the desired data. Many of the other tallies should be emulatable in post from these tallies alone.
 
-The core object model currently doesn't support a few edge cases: the multiplier section, energy-distributed sources, etc.
+The core object model currently doesn't support a few edge cases:
+
+- =[SuperMirror]= (impredicativity)
+- =[MatTimeChange]= (impredicativity)
+- Non-tetrahedral =LAT=, =U=, and =FILL= options in =[Cell]=
+- =[Temperature]= (just set on =Cell= directly)
+- =[DataMax]= (I'm just lazy for now)
+- =[Volume]= (just set on =Cell= directly)
+- Any tally besides =[T-Track]=, =[T-Product]=, or =[T-Time]= with the dump options (it'd require parsing that's too complicated; most of the functionality may be recovered /in post/ anyway.)
+
+
 
 It would be nice if the Fortran-Python interop would make it possible to write the user-defined sources, cross-sections, functions, and tallies in Python. Similarly, defining the (electro)magnetic field files and other external files via Python would be feasible.
-
-Testing with Hypothesis is /extremely desirable/---property-based testing is probably the only way I get something working in a reasonable time frame.
 
 Converting to Julia might make for /far/ cleaner code---pending my finding a property-based testing library for the language.
 
