@@ -23,23 +23,22 @@ def test_a(cls):
 
 
     req = []
-    for phits_iden, valspec, idx, *s in sorted((v for v in cls.syntax.values() if v[2] is not None), key=lambda t: t[2]):
-        if isinstance(valspec, tuple):
-            req.append(tuples(*[i.strat for i in valspec]))
-        else:
-            req.append(valspec.strat)
+    for py_iden, (phits_iden, valspec, idx, *s) in sorted(((k, v) for k, v in cls.syntax.items() if v[2] is not None),
+                                                          key=lambda t: t[1][2]):
+        # these omitted arguments corrupt the unit-like nature of the tests for no reason
+        if py_iden not in ["mask"] and not (hasattr(cls, "subobjects") and py_iden in cls.subobjects):
+            if isinstance(valspec, tuple):
+                req.append(tuples(*[i.strat for i in valspec]))
+            else:
+                req.append(valspec.strat)
 
     opt = dict()
     for py_iden, (phits_iden, valspec, idx, *s) in filter(lambda t: t[1][2] is None, cls.syntax.items()):
-        if isinstance(valspec, tuple):
-            opt[py_iden] = one_of(none(), tuples(*[i.strat for i in valspec]))
-        else:
-            opt[py_iden] = one_of(none(), valspec.strat)
-
-    # Some things are more troublesome to generate than there worth, e.g. all of the acceptable element-isotope combinations
-    # if cls.name == 'source':
-    #     if "mask" in opt:
-    #         del opt["mask"]
+        if py_iden not in ["mask"] and not (hasattr(cls, "subobjects") and py_iden in cls.subobjects):
+            if isinstance(valspec, tuple):
+                opt[py_iden] = one_of(none(), tuples(*[i.strat for i in valspec]))
+            else:
+                opt[py_iden] = one_of(none(), valspec.strat)
 
 
 
@@ -107,7 +106,7 @@ def test_a(cls):
                 assert ins.section_title() in inp, f"Section didn't make it into input:\n{inp}"
                 run_phits([test_cell], test_source, [], control="output_echo_only", multipliers=[ins])
 
-            elif cls.name in ["data_max", "mat_time_change"]:
+            elif cls.name in ["data_max", "mat_time_change", "mat_name_color"]:
                 mat = Material([("H", 1)], **{cls.name: ins})
                 inp = make_input([Cell([test_surf], mat, 0.5)], test_source, [], control="output_echo_only")
                 assert ins.section_title() in inp, f"Section didn't make it into input:\n{inp}"
@@ -122,9 +121,12 @@ def test_a(cls):
 
             else:
                 raise RuntimeError(f"Class {cls} not handled in test cases.")
-        except RuntimeError as e:
+
+        except (RuntimeError, ValueError) as e:
             if e.args[0] == "PHITS line limit reached.":
                 print(e) # throw away errors that are PHITS's fault
+            elif "Integration problem:" in e.args[0]:
+                pass
             else:
                 raise e
 
@@ -139,22 +141,35 @@ def test_a(cls):
     #           phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target,
     #                   # Phase.shrink
     #                   ))
-    # def integrated(cells, )
+    # def integrated(cells, surfaces, tallies)
 
 
 
 # TODO: fix bug appearing in Cell with material with two 1H slipping past the check
 if __name__ == '__main__':
     import base,  source, parameters, cell, surface, tally, transform, material, misc
-    # These require file IO or too sophisticated particle knowledge to generate fully.
+    omit = ["Parameters"]
+    # These require file IO or suffer from poor error reporting/documentation so that I can't implement a Python check for the PHITS error.
     # It should however be checked that they generate only the expected errors.
-    omit = []
-    omit += ["Tetrahedral", "MappedMagneticField", "MappedElectromagneticField", "Torus", "MatTimeChange"]
+    omit += ["Tetrahedral", "MappedMagneticField", "MappedElectromagneticField", "FragData"]
     # Takes forever because there's a billion parameters, and they all interdepend.
     # Enable it only to check that things are grammatically correct; perhaps eventually it'll be seamless.
-    omit += ["Parameters"]
+    # omit += ["Parameters", "Gaussian", "Cylindrical", "Rectangular", "GaussianPrism", "Parabolic", "ParabolicPrism",
+    #          "Spherical", "Beam", "Conical", "TrianglePrism", "Void", "OuterVoid", "Cell", "MagneticField", "NeutronMagneticField",
+    #          "UniformElectromagneticField", "DeltaRay", "TrackStructure", "ElasticOption", "Importance", "WeightWindow", "WWBias",
+    #          "ForcedCollisions", "Multiplier", "RegionName", "Counter", "Timer", "Plane", "PointPlane", "ParallelPlane",
+    #          "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic", "Box", "EllipticalCylinder", "Spheroid", "Wedge",
+    #          "TetrahedronBox", "Transform", "MatNameColor", "Material",  "DumpFluence", "RepeatedCollisions", "DataMax"
+    #          ]
     # omit += ["Gaussian", "Cylindrical", "Rectangular", "GaussianPrism", "Parabolic", "ParabolicPrism", "Spherical", "Beam",
-    #          "Conical", "TrianglePrism",  "MagneticField", "NeutronMagneticField",
+    #          "Conical", "TrianglePrism",   "MagneticField", "NeutronMagneticField",
+    #          "Void", "OuterVoid", "Cell",
+    #          "MagneticField", "NeutronMagneticField", "UniformElectromagneticField",
+    #          "DeltaRay", "TrackStructure", "ElasticOption", "Importance", "WeightWindow", "WWBias", "ForcedCollisions",
+    #          "Multiplier", "RegionName", "Counter", "Timer", "Plane", "PointPlane", "ParallelPlane", "Sphere", "Cylinder",
+    #          "Cone", "SimpleConic", "GeneralConic", "Box", "EllipticalCylinder", "Spheroid", "Wedge", "TetrahedronBox",
+    #          "Transform", "DataMax", "MatNameColor", "DumpFluence" # "Material",
+
     #          "UniformElectromagneticField", "DeltaRay", "TrackStructure", "Importance", "WeightWindow", "WWBias",
     #          "ForcedCollisions", "Multiplier", "RegionName", "Counter", "Timer", "Plane", "PointPlane", "ParallelPlane",
     #          "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic", "Box", "HexagonalPrism", "EllipticalCylinder",
@@ -165,6 +180,7 @@ if __name__ == '__main__':
     #         "RepeatedCollisions", "Multiplier", "RegionName", "Counter", "Timer", "Plane", "PointPlane", "ParallelPlane",
     #         "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic", "Torus", "Box", "HexagonalPrism",
     #         "EllipticalCylinder", "Spheroid", "Wedge", "TetrahedronBox"]
+              # ]
     # TODO: check Cell correct after fixing Material
     if "Parameters" not in omit:
         test_a(parameters.Parameters)

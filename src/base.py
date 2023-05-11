@@ -13,6 +13,7 @@ __pdoc__["slices"] = False
 
 
 def _tuplify(xs: list) -> tuple:
+    """Convert lists to tuples for hashability purposes."""
     return tuple(map(lambda x: _tuplify(x) if isinstance(x, list) else x, xs))
 
 def _continue_lines(inp: str) -> str:
@@ -120,7 +121,8 @@ class PhitsObject:
     superobjects = []
     """A list of all `PhitsObject.name`s that this object ought to be defined from."""
     restrictions = lambda self: tuple()
-    """A tuple of additional properties to check after initialization"""
+    """A function that's called right at the end of initialization. Should be used to raise errors for any combination of values
+    that is incorect but not easily expressible via `ValSpec`s."""
     def __init__(self, *args,  **kwargs):
         """Arguments are interpreted according to `PhitsObject.syntax`, and then any leftovers in `kwargs` are used to create a `Parameters`
         object, which is then assigned to a `parameters` attribute."""
@@ -130,7 +132,7 @@ class PhitsObject:
         required = list(map(lambda tup: tup[0],
                             sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
 
-        assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self.name} object."
+        assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self} object."
         for idx, arg in enumerate(args):
             # Validate first
             details = self.syntax[required[idx]]
@@ -313,11 +315,17 @@ class PhitsObject:
 
 
     @classmethod
-    def syntax_for(self, attr: str) -> str:
+    def syntax_for(self, attr: str, phits=False) -> str:
         """Return a readable summary of a specific initialization parameter of the PhitsObject in question."""
-        r = "PHITS name\tAccepted value\tPosition\n"
-        r += f"{self.syntax[attr][0]}\t{self.syntax[attr][1]}\t{self.syntax[attr][2]}"
-        return r
+        if phits:
+            rev = self._syntax_reversed()
+            r = "Python name\tAccepted value\tPosition\n"
+            r += f"{rev[attr][0]}\t{rev[attr][1]}\t{rev[attr][2]}"
+            return r
+        else:
+            r = "PHITS name\tAccepted value\tPosition\n"
+            r += f"{self.syntax[attr][0]}\t{self.syntax[attr][1]}\t{self.syntax[attr][2]}"
+            return r
 
     def _sanitize(self, iden: str) -> str:
         """Make a PHITS identifier Python-acceptable.
@@ -332,6 +340,9 @@ class PhitsObject:
 
         return r
 
+    def _syntax_reversed(self):
+        """Produce a dictionary analogous to `PhitsObject.syntax` but using PHITS's names."""
+        return {v[0]: (k, *v[1:]) for k, v in self.syntax.items()}
 
     def __eq__(self, other: "PhitsObject") -> bool:
         """PhitsObjects should be equal if their definitions would be the same."""

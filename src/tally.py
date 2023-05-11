@@ -16,9 +16,9 @@ class DumpFluence(PhitsObject):
               "data": ("dump", List(FinBij({"particle": 1, "x": 2, "y": 3, "z": 4, "u": 5, "v": 6, "w": 7, "energy": 8, "weight": 9,
                                             "time": 10, "counter1": 11, "counter2": 12, "counter3": 13, "spinx": 14, "spiny": 15,
                                             "spinz": 16, "collision_number": 17, "history_number": 18, "batch_number": 19,
-                                            "cascade_id": 20})), 3),
+                                            "cascade_id": 20}), unique=True), 3),
               "output": ("output", FinBij({"current": "current", "a_current": "a-curr", "oa_current": "oa-curr"}), 4),
-              "particles": ("part", List(Particle()), None),
+              "particles": ("part", List(Particle(), max_len=6, unique=True), None),
               "factor": ("factor", PosReal(), None),
               "maximum_error": ("stdcut", PosReal(), None),
               "energy_bounds": ((None, None), (PosReal(), PosReal()), None),
@@ -27,7 +27,7 @@ class DumpFluence(PhitsObject):
               "time_bounds": ((None, None), (PosReal(), PosReal()), None)}
 
     prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = cross{self.index}", "factor", "output",
-                            f"dump = -{len(self.data)}", " ".join([str(i) for i in self.data]),
+                            f"dump = -{len(self.data)}", ("data",),
                             "mesh = reg", f"reg = {self.group_size}",
                             ("r-from", "r-to", "'area"))
 
@@ -37,35 +37,38 @@ class DumpFluence(PhitsObject):
                              self.time_bounds)
     separator = lambda self: self.section_title()
 
+    def restrictions(self):
+        if len(set(self.data)) < len(self.data):
+            raise ValueError(f"Duplicate DumpFluence data dump dimension: got {self.data}")
 
 
-class DumpProduct(PhitsObject):
-    name = "t-cross"
-    required = ["out", "into", "area", "data", "output_type"]
-    positional = ["out", "into", "area", "data", "output_type"]
-    optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
-    shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),
-             lambda self: f"dump = -{len(self.data)}", lambda self: " ".join([str(i) for i in self.data]))
-    prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
-               lambda self: f"reg = {self.group_size}")
-    ident_map = {"particles": "part"}
-    group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
-                             self.time_bounds)
-    separator = lambda self: self.section_title()
+# class DumpProduct(PhitsObject):
+#     name = "t-cross"
+#     required = ["out", "into", "area", "data", "output_type"]
+#     positional = ["out", "into", "area", "data", "output_type"]
+#     optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
+#     shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),
+#              lambda self: f"dump = -{len(self.data)}", lambda self: " ".join([str(i) for i in self.data]))
+#     prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
+#                lambda self: f"reg = {self.group_size}")
+#     ident_map = {"particles": "part"}
+#     group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
+#                              self.time_bounds)
+#     separator = lambda self: self.section_title()
 
-class DumpTime(PhitsObject):
-    name = "t-cross"
-    required = ["out", "into", "area", "data", "output_type"]
-    positional = ["out", "into", "area", "data", "output_type"]
-    optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
-    shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),
-             lambda self: f"dump = -{len(self.data)}", lambda self: " ".join([str(i) for i in self.data]))
-    prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
-               lambda self: f"reg = {self.group_size}")
-    ident_map = {"particles": "part"}
-    group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
-                             self.time_bounds)
-    separator = lambda self: self.section_title()
+# class DumpTime(PhitsObject):
+#     name = "t-cross"
+#     required = ["out", "into", "area", "data", "output_type"]
+#     positional = ["out", "into", "area", "data", "output_type"]
+#     optional = ["particles", "factor", "energy_bounds", "angle_bounds", "time_bounds"]
+#     shape = ((lambda self: f"{self.out.index}", lambda self: f"{self.into.index}", "area"),
+#              lambda self: f"dump = -{len(self.data)}", lambda self: " ".join([str(i) for i in self.data]))
+#     prelude = ("mesh = reg", "particles", "unit = 1", "axis = reg", "file = cross.dmp", "factor", "output_type",
+#                lambda self: f"reg = {self.group_size}")
+#     ident_map = {"particles": "part"}
+#     group_by = lambda self: (self.particles, self.data, self.output_type, self.factor, self.energy_bounds, self.angle_bounds,
+#                              self.time_bounds)
+#     separator = lambda self: self.section_title()
 
 
 

@@ -139,21 +139,21 @@ class GeneralConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid of the 
                            "transform", "GQ", "quadratic", "mixed", "linear", "constant"),)
 
 # TODO: I don't know what "skewed" means for transfomations on tori, so disabling for now.
-# class Torus(PhitsObject): # torus parallel to an axis of the form
-#              # (axisvar - axis0)^2/B^2 + (quadrature(<non-axis displacements>) - A)^2 - 1 = 0
-#     name = "surface"
-#     syntax = common | {"axis": (None, FinBij({"x": "X", "y": "Y", "z":"Z"}), 0),
-#                        "center": ((None, None, None), (Real(), Real(), Real()), 1),
-#                        "scales": ((None, None, None), (Real(), PosReal(), PosReal()), 2)}
-#     shape = lambda self: ((f"*{self.index}" if self.reflective else
-#                            (f"+{self.index}" if self.white else f"{self.index}"),
-#                            f"T{self.axis}", "center", "scales"),)
+class Torus(PhitsObject): # torus parallel to an axis of the form
+             # (axisvar - axis0)^2/B^2 + (quadrature(<non-axis displacements>) - A)^2 - 1 = 0
+    name = "surface"
+    syntax = common | {"axis": (None, FinBij({"x": "X", "y": "Y", "z":"Z"}), 0),
+                       "center": ((None, None, None), (Real(), Real(), Real()), 1),
+                       "scales": ((None, None, None), (Real(), PosReal(), PosReal()), 2)}
+    shape = lambda self: ((f"*{self.index}" if self.reflective else
+                           (f"+{self.index}" if self.white else f"{self.index}"),
+                           f"T{self.axis}", "center", "scales"),)
 
-#     def restrictions(self):
-#         if self.scales[0] == 0 or self.scales[1] == 0 or self.scales[2] == 0:
-#             raise ValueError(f"Torus's scales must be nonzero; got {self.scales}")
-#         # if self.transform is not None and not self.transform.rotate_first: # skew
-#         #     raise ValueError()
+    def restrictions(self):
+        if self.scales[0] == 0 or self.scales[1] == 0 or self.scales[2] == 0:
+            raise ValueError(f"Torus's scales must be nonzero; got {self.scales}")
+        # if self.transform is not None and not self.transform.rotate_first: # skew
+        #     raise ValueError()
 
 
 class Box(PhitsObject): # box formed by three vectors with tails at a given base point, or cross product of 3 intervals,

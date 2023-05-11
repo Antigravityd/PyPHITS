@@ -47,9 +47,9 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     unique = set()
 
     def add_to_set(an_obj, the_set, prev=None):  # Recursively add subtypes to set if they represent an "entry" in one of the sections
-        if isinstance(an_obj, col.Iterable):
+        if isinstance(an_obj, list) or isinstance(an_obj, tuple):
             for ob in an_obj:
-                if isinstance(ob, PhitsObject) and ob is not prev:
+                if ob is not prev:
                     add_to_set(ob, the_set)
         if isinstance(an_obj, PhitsObject):
             the_set.add(an_obj)
@@ -85,7 +85,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
                     "track_structure": [],
                     # "super_mirror": [],
                     "elastic_option": [],
-                    # "data_max": [],
+                    "data_max": [],
                     "frag_data": [],
                     "importance": [],
                     "weight_window": [],
@@ -125,8 +125,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     for node in unique:
         type_divided[node.name].append(node)
 
-    toset = OuterVoid([], **outer_void_properties)
-    toset.regions = (~reduce(lambda c1, c2: c1 | c2, type_divided["cell"])).regions
+    toset = OuterVoid((~reduce(lambda c1, c2: c1 | c2, type_divided["cell"])).regions, **outer_void_properties)
 
     type_divided["cell"].append(toset)
 
@@ -141,9 +140,9 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     representatives = {n: n for n in it.chain.from_iterable(type_divided.values())} # necessary because `unique` doesn't have idx
 
     def adjust_subobjects(an_obj, ason=(None, None)): # Recursively replace redundant subtypes with the representative in the dict
-        if isinstance(an_obj, col.Iterable):
+        if isinstance(an_obj, tuple) or isinstance(an_obj, list):
             for ob in an_obj:
-                if isinstance(ob, PhitsObject) and ob is not ason[1]:
+                if ob is not ason[1]:
                     adjust_subobjects(ob)
 
         elif isinstance(an_obj, PhitsObject):
@@ -160,6 +159,11 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     adjust_subobjects(cross_sections)
     adjust_subobjects(multipliers)
 
+
+    # Check that the whole shebang is valid together
+    for _, v in type_divided.items():
+        if len(v) > 0 and hasattr(type(v[0]), "global_restrictions"):
+            v[0].global_restrictions(type_divided)
 
     # Now, we can make the input file.
     inp = ""
@@ -231,7 +235,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     add_defs("track_structure")
     # add_defs("super_mirror")
     add_defs("elastic_option")
-    # add_defs("data_max")
+    add_defs("data_max")
     add_defs("frag_data")
     add_defs("importance")
     add_defs("weight_window")
@@ -292,6 +296,7 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
             out = sp.run(["phits", filename], capture_output=True, text=True, cwd=newdir)
             assert not re.search("(?i:Error)", out.stdout), "PHITS Error." # this REALLY sucks. Thank PHITS.
             assert out.returncode == 0, "PHITS Error"
+
         except AssertionError as error:
             r = f"PHITS exited with code {out.returncode}.\n"
             r += f"stdout: {out.stdout}\n"
@@ -315,7 +320,6 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
                 dfile = os.path.join(newdir, f"product{t.index}_dmp")
             elif t.name == "t-time":
                 dfile = os.path.join(newdir, f"time{t.index}_dmp")
-            breakpoint()
             result[t] = read_dump(dfile, t.data, return_type)
 
 

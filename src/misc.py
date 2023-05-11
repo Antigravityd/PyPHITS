@@ -2,6 +2,7 @@ import sys
 from base import *
 from transform import *
 from surface import surface_spec
+import itertools as it
 
 # no temperature; do that at the cell level for now
 
@@ -142,8 +143,8 @@ class ElasticOption(PhitsObject):
 class FragData(PhitsObject):
     name = "frag_data"
     syntax = {"semantics": (None, FinBij({"histogram": 1, "extrapolated": 4, "interpolated": 5}), 0),
-              "projectile": (None, OneOf(Particle(), Nuclide()), 1),
-              "target": (None, Nuclide(), 2),
+              "projectile": (None, OneOf(FinBij({"proton": "proton", "neutron": "neutron"}), Nuclide(fake=True)), 1),
+              "target": (None, Nuclide(fake=True), 2),
               "file": (None, Path(), 3)}
     superobjects = ["cell"]
     prelude = (("opt", "proj", "targ", "'file"),)
@@ -153,7 +154,7 @@ class FragData(PhitsObject):
 
 class Importance(PhitsObject):
     name = "importance"
-    syntax = {"particles": ("part", List(Particle()), 0),
+    syntax = {"particles": ("part", List(Particle(), unique=True), 0),
               "importance": (None, PosReal(), 1),
               }
     superobjects = ["cell"]
@@ -163,14 +164,16 @@ class Importance(PhitsObject):
     separator = lambda self: self.section_title()
     max_groups = 6
 
-    def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"Importance particles must not be duplicates; got {self.particles}.")
+    @classmethod
+    def global_restrictions(self, type_divided):
+        all_particles = list(it.chain.from_iterable(map(lambda x: x.particles, type_divided["importance"])))
+        if len(set(all_particles)) < len(all_particles):
+            raise ValueError("Integration problem: all Importances must have mutually disjoint lists of particles.")
 
 
 class WeightWindow(PhitsObject):
     name = "weight_window"
-    syntax = {"particles": ("part", List(Particle()), 0), # TODO: geometrical meshes
+    syntax = {"particles": ("part", List(Particle(), unique=True), 0),
               "variable": (None, FinBij({"energy": "energy", "time": "time"}), 2),
               "windows": (None, List(Tuple(PosReal(), PosReal())), 1),
               }
@@ -184,14 +187,17 @@ class WeightWindow(PhitsObject):
     separator = lambda self: self.section_title()
     max_groups = 6
 
-    def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"WeightWindow particles must not be duplicates; got {self.particles}.")
+    @classmethod
+    def global_restrictions(self, type_divided):
+        all_particles = list(it.chain.from_iterable(map(lambda x: x.particles, type_divided["weight_window"])))
+        if len(set(all_particles)) < len(all_particles):
+            raise ValueError("Integration problem: all WeightWindows must have mutually disjoint lists of particles.")
+
 
 
 class WWBias(PhitsObject):
     name = "ww_bias"
-    syntax = {"particles": ("part", List(Particle()), 0),
+    syntax = {"particles": ("part", List(Particle(), unique=True), 0),
               "biases": (None, List(Tuple(PosReal(), PosReal())), 1),
               }
     superobjects = ["cell"]
@@ -202,17 +208,13 @@ class WWBias(PhitsObject):
     separator = lambda self: self.section_title()
     max_groups = 6
 
-    def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"WWBias particles must not be duplicates; got {self.particles}.")
-
 
 
 
 class ForcedCollisions(PhitsObject):
     name = "forced_collisions"
-    syntax = {"particles": ("part", List(Particle()), 0),
-              "factor": (None, RealBetween(0, 1), 1),
+    syntax = {"particles": ("part", List(Particle(), unique=True), 0),
+              "factor": (None, RealBetween(-1, 1), 1),
               "force_secondaries": (None, FinBij({True: 1, False: -1}), None),
               }
 
@@ -222,27 +224,35 @@ class ForcedCollisions(PhitsObject):
                            else str(self.factor)),)
 
     group_by = lambda self: self.particles
+
     separator = lambda self: self.section_title()
     max_groups = 6
 
     def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"ForcedCollisions particles must not be duplicates; got {self.particles}.")
+        if "electron" in self.particles or "positron" in self.particles:
+            raise ValueError(f"ForcedCollision does not accept electrons or positrons; got {self.particles}.")
+
+    def global_restrictions(self, type_divided):
+        all_particles = list(it.chain.from_iterable(map(lambda x: x.particles, type_divided["forced_collisions"])))
+        if len(set(all_particles)) < len(all_particles):
+            raise ValueError("Integration problem: all ForcedCollisions must have mutually disjoint lists of particles.")
+
 
 
 class RepeatedCollisions(PhitsObject):
     name = "repeated_collisions"
-    syntax = {"particles": ("part", List(Particle()), 0),
+    syntax = {"particles": ("part", List(Particle(fake=True), unique=True), 0),
               "collision_reps": (None, PosInt(), 1),
               "evaporation_reps":  (None, PosInt(), 2),
+              "mother": (None, List(Nuclide(fake=True)), 3),
               "ebounds": (("emin", "emax"), (PosReal(), PosReal()), None),
-              "mother": (None, List(Nuclide()), None),
+
               }
 
     superobjects = ["cell"]
     prelude = lambda self: ("particles",
                             f"mother = {len(self.mother)}" if self.mother else "",
-                            " ".join(self.mother) if self.mother else "",
+                            ("mother",),
                             "ebounds", ("reg", "n-coll", "n-evap"))
     shape = (("cell", "collision_reps", "evaporation_reps"),)
 
@@ -251,36 +261,33 @@ class RepeatedCollisions(PhitsObject):
     max_groups = 6
 
     def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"RepeatedCollisions particles must not be duplicates; got {self.particles}.")
-
         if self.collision_reps * self.evaporation_reps <= 1 or self.collision_reps * self.evaporation_reps >= 2_147_483_647:
             raise ValueError(f"RepeatedCollisions' product of repititions must be more than 1 as an int32;"
                              f" got collsion_reps={self.collision_reps} and evaporation_reps={self.evaporation_reps}.")
         if self.ebounds is not None and self.ebounds[0] >= self.ebounds[1]:
+
             raise ValueError(f"RepeatedCollisions' ebounds must be ordered; got {self.ebounds}.")
 
+    @classmethod
+    def global_restrictions(self, type_divided):
         # Doesn't work because cell isn't set at __init__
-        # possible = set(map(lambda x: kf_encode(x[0]), self.cell.material.composition))
-        # if any(kf_encode(x) not in possible for x in self.mother):
-        #     raise ValueError(f"RepeatedCollisions' mother nuclei must be among its cell's material's nuclei;"
-        #                      f" got {set(mother) - possible} extra.")
+        for rc in type_divided["repeated_collisions"]:
+            possible = set(map(lambda x: kf_encode(x[0]), rc.cell.material.composition))
+            if any(kf_encode(x) not in possible for x in rc.mother):
+                raise ValueError(f"Integration problem: RepeatedCollisions' mother nuclei must be among its cell's material's nuclei;"
+                                 f" got {set(rc.mother) - possible} extra.")
 
-        # Also, mother nuclei must be present in the material of the relevant cells...don't know how to test.
 
 
 class Multiplier(PhitsObject):
     name = "multiplier"
-    syntax = {"particles": ("part", List(Particle()), 0),
+    syntax = {"particles": ("part", List(Particle(), unique=True, max_len=6), 0),
               "semantics": ("interpolation", FinBij({"linear": "lin", "log": "log", "left_histogram": "glow",
                                                      "right_histogram": "ghigh"}), 1),
               "bins": (None, List(Tuple(PosReal(), PosReal())), 2)}
     shape = lambda self: (f"number = -{200 + self.index}", "semantics", "particles", f"ne = {len(self.bins)}",
                           "\n".join(map(lambda t: f"{t[0]} {t[1]}", self.bins)))
 
-    def restrictions(self):
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"Multipleir particles must not be duplicates; got {self.particles}.")
 
 
 class RegionName(PhitsObject):
@@ -296,7 +303,7 @@ class RegionName(PhitsObject):
 # TODO: optional arguments?
 class Counter(PhitsObject):
     name = "counter"
-    syntax = {"particles": ("part", List(OneOf(Particle(), Nuclide())), 0),
+    syntax = {"particles": ("part", List(OneOf(Particle(), Nuclide()), max_len=20, unique=True), 0),
               "entry": (None, Between(-9999, 10000), 1),
               "exit": (None, Between(-9999, 10000), 2),
               "collision": (None, Between(-9999, 10000), 3),
@@ -311,11 +318,6 @@ class Counter(PhitsObject):
     separator = lambda self: self.section_title() + f"counter = {self.index}\n"
     max_groups = 3
 
-    def restrictions(self):
-        if len(self.particles) > 20:
-            raise ValueError(f"Counter particles must not exceed 20; got {len(self.particles)}.")
-        if len(set(self.particles)) != len(self.particles):
-            raise ValueError(f"Counter particles must not be duplicates; got {self.particles}.")
 
 
 class Timer(PhitsObject):

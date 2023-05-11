@@ -11,6 +11,7 @@ import sys
 
 
 class Rectangle(PhitsObject):
+    """A rectangular/uniform distribution, divided into a number of bins."""
     name = "source"
     syntax = {"width": ("tw", Real(), 0),
               "number": ("tn", PosInt(), 1),
@@ -21,6 +22,7 @@ class Rectangle(PhitsObject):
 
 
 class Gaussian(PhitsObject):
+    """A Gaussian time distribution, """
     name = "source"
     syntax = {"fwhm": ("tw", Real(), 0),
               "number": ("tn", Integer(), 1),
@@ -32,53 +34,6 @@ class Gaussian(PhitsObject):
 
 
 
-class TimeDistribution(PhitsObject):
-    name = "source"
-    syntax = {"bins": (None, List(PosReal()), 0),
-              "particle_production": (None, List(PosReal()), None)}
-
-    shape = lambda slf: ("t-type = 4" if slf.particle_generation else "t-type = 3",
-                         f"ntt = {len(slf.bins)}",
-                         "\n".join(" ".join(str(j) for j in i) for i in slf.bins),
-                         "o-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "")
-
-
-class AngleDistribution(PhitsObject):
-    name = "source"
-    syntax = {"bins": (None, List(Tuple(PosReal(), PosReal())), 0),
-              "last_bin": (None, PosReal(), 1),
-              "unit": ("a-type", FinBij({"cos": 1, "degree": 11}), None),
-              "particle_production": (None, List(PosReal()), None)}
-
-    shape = lambda self: ("a-type = 14" if self.unit == "degree" else "a-type = 4",
-                          f"na = {len(self.bins)}",
-                          "\n".join(" ".join(str(i) for i in j) for j in self.bins) + f"\n{self.last_bin}",
-                          "q-type = 1\n" + " ".join((str(i) for i in self.particle_production)) if self.particle_production \
-                          else "")
-
-    def restrictions(self):
-        if self.particle_production is not None and len(self.bins) != len(self.particle_production):
-            raise ValueError("For EnergyDistribution: len(bins) must equal len(particle_production).")
-
-
-
-class EnergyDistribution(PhitsObject):
-    name = "source"
-    syntax = {"bins": (None, List(Tuple(PosReal(), PosReal(), PosReal())), 0),
-              "adjust": (None, FinBij({"particles": "particles", "weights": "weights"}), None),
-              "units": (None, FinBij({"MeV": "MeV", "Angstrom": "Angstrom"}), None),
-              "normalize": (None, FinBij({"1/Lethargy": -1, "1/MeV": 1}), None), # TODO: check 1/MeV
-              "particle_production": (None, List(PosReal()), None)
-              }
-
-    shape = lambda slf: (("e-type = 22" if slf.units == "MeV" else "e-type = 32") if slf.adjust == "particles" else \
-                          ("e-type = 23" if slf.units == "MeV" else "e-type = 33"),
-                          f"ne = -{len(slf.bins)}" if slf.normalize == "1/Lethargy" else f"ne = {len(slf.bins)}",
-                          "\n".join(" ".join(str(j) for j in i) for i in slf.bins),
-                          "p-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "")
-    def restrictions(self):
-        if self.particle_production is not None and len(self.bins) != len(self.particle_production):
-            raise ValueError("For EnergyDistribution: len(bins) must equal len(particle_production).")
 
 class GaussianEnergy(PhitsObject):
     name = "source"
@@ -104,6 +59,7 @@ class Maxwellian(PhitsObject):
                           "p-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "")
 
 class Radioisotope(PhitsObject):
+    """A radioisotope source energy distribution."""
     name = "source"
     syntax = {"adjust": (None, FinBij({"particles": "particles", "weights": "weights"}), None),
               "isotopes": (None, List(Tuple(Nuclide(), PosReal())),  0),

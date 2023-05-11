@@ -3,6 +3,7 @@ from base import *
 
 _tester = Nuclide()
 def _decomposition(composition):
+    """Turns a composition list into PHITS input form."""
     r = ""
     for nuc, ratio in composition:
         conv = _tester.phits(nuc)
@@ -12,14 +13,38 @@ def _decomposition(composition):
             r += f"{conv} {ratio} "
     return r
 
+class DataMax(PhitsObject):
+    """Given a material, sets the maximum energy for an interaction between particles and nucleus in the material."""
+    name = "data_max"
+    syntax = {"particles": ("part", List(FinBij({"proton": "proton", "neutron": "neutron"}), unique=True), 0),
+              "nucleus": (None, Nuclide(fake=True), 1),
+              "max_energy": (None, PosReal(), 2)}
+    superobjects = ["material"]
+    prelude = ("particles", ("mat", "'nucleus", "dmax"))
+    # Manual lies about accepting the usual syntax for nuclides
+    shape = lambda self: (("material", "nucleus", "max_energy"),)
+    group_by = lambda self: (self.particles,)
+    separator = lambda self: self.section_title()
+    max_groups = 6
+
+class MatNameColor(PhitsObject):
+    name = "mat_name_color"
+    syntax = {"mat_name": (None, Text(), 0),
+              "size": (None, PosReal(), 1),
+              "color": (None, Color(), 2)} # TODO: color
+
+    superobjects = ["material"]
+    prelude = (("mat", "name", "\\size", "\\color"),)
+    shape = (("material", "mat_name", "size", "color"),)
 
 
-# TODO: how the libraries work isn't well-documented. Is there a single library set for the whole material, or
-# does one set a library after each element of the compositon? Can the thermal neutron library be set anywhere?
 # TODO: temporarily setting the composition to be integer-only to cut down on length.
+# TODO: also temporarily setting JENDL4Nuclide() to enable testing; it looks like Parameters() can change this error behavior,
+# so should be set back to Nuclide() in production
+# TODO: Nuclide-by-nuclide library setting
 class Material(PhitsObject): # Composition is a list of pairs of (<element name string>, <ratio>) e.g. ("8Li", 0.5)
     name = "material"
-    syntax = {"composition": (None, List(Tuple(JENDL4Nuclide(), PosInt())), 0),
+    syntax = {"composition": (None, List(Tuple(JENDL4Nuclide(), PosInt()), unique_by=lambda x: kf_encode(x[0])), 0),
               "gas": ("GAS", Choice10(), None),
               "electron_step": ("ESTEP", PosInt(), None), # TODO: check integer right
               "neutron_lib": ("NLIB", LibraryID(), None),
@@ -29,8 +54,11 @@ class Material(PhitsObject): # Composition is a list of pairs of (<element name 
               "conductor": ("COND", FinBij({False: -1, True: 1}), None),
               "thermal_lib": (None, ThermalLib(), None),
               "chemical": ("chem", List(Tuple(Chemical(), PosInt())), None),
+              "data_max": (None, IsA(DataMax, index=True), None),
               # "mat_time_change": (None, IsA(MatTimeChange, index=True), None),
+              "mat_name_color": (None, IsA(MatNameColor, index=True), None)
               }
+    subobjects = ["data_max", "mat_time_change", "mat_name_color"]
     shape = lambda self: (f"MAT[{self.index}]",
                           _decomposition(self.composition),
                           "gas", "electron_step", # "neutron_lib", "photon_lib", "electron_lib", "proton_lib",
@@ -48,10 +76,6 @@ class Material(PhitsObject): # Composition is a list of pairs of (<element name 
             raise ValueError("Material cannot have nuclei with Z > 92 and ATIMA set at the same time;"
                              " please pass stopping_model=SPAR+NTMC to the material.")
 
-        if len(set(map(lambda x: x[0], self.composition))) < len(self.composition):
-            raise ValueError(f"Material cannot have duplicate nuclei; got {self.composition}")
-
-
 
 
 # TODO: irremovable circularity
@@ -63,15 +87,6 @@ class Material(PhitsObject): # Composition is a list of pairs of (<element name 
 #     prelude = (("mat", "'time", "change"))
 #     shape = (("old", "time", "new"))
 
-class MatNameColor(PhitsObject):
-    name = "mat_name_color"
-    syntax = {"name": (None, Text(), 0),
-              "size": (None, PosReal(), 1),
-              "color": (None, Color(), 2)} # TODO: color
-
-    superobjects = ["material"]
-    prelude = (("mat", "\\name", "\\size", "\\color"),)
-    shape = (("material", "name", "size", "color"),)
 
 
 __pdoc__ = dict()

@@ -971,4 +971,3 @@ class RegionTuple(ValSpec):
     def description(self):
         return "a recursive tuple of surfaces with set operation semantics: \"~\" negates what follows, infix \"|\" unions, " \
             "and juxtaposition intersects"
-

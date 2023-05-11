@@ -5,33 +5,12 @@ from misc import *
 from material import *
 from surface import TetrahedronBox, surface_spec
 
-def tup_to_def(tup):
-    r = ""
-    for el in tup:
-        if isinstance(el, PhitsObject):
-            sense = "-" if el.inside is not None else ""
-            r += f"{sense}{el.index} "
-        elif isinstance(el, tuple):
-            cont = tup_to_def(el)
-            r += "(" + (cont if cont[-1] != "\n" else cont[:-1]) + ") "
-        elif el == "~":
-            r += "#"
-        elif el == "|":
-            r += ": "
-        else:
-            breakpoint()
-            raise ValueError(f"Unrecognized token {el} in cell region definition.")
-
-    return r
-
-def outer_void(tup):
-    return "~ (" + " : ".join(map(lambda x: tup_to_def((x,)), tup)) + ")"
 
 
-subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True),), None),
-                                                   # IsA(MappedMagneticField, index=True)), None),
-                    "electromagnetic_field": (None, OneOf(IsA(UniformElectromagneticField, index=True),), None),
-                                                          # IsA(MappedElectromagneticField, index=True)), None),
+subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True), #), None),
+                                                   IsA(MappedMagneticField, index=True)), None),
+                    "electromagnetic_field": (None, OneOf(IsA(UniformElectromagneticField, index=True),#), None),
+                                                          IsA(MappedElectromagneticField, index=True)), None),
                     "delta_ray": (None, IsA(DeltaRay, index=True), None),
                     "track_structure": (None, IsA(TrackStructure, index=True), None),
                     # "super_mirror": (None, IsA(SuperMirror, index=True), None),
@@ -50,23 +29,26 @@ common_syntax = subobject_syntax | {"volume": ("VOL", PosReal(), None),
                                     "transform": ("TRCL", IsA(Transform, index=True), None)}
 
 class Tetrahedral(PhitsObject):
+    """A box filled with tetrahedrons."""
     name = "cell"
-    syntax = common_syntax | {"regions": (None, List(IsA(TetrahedronBox, index=True)), 0),
+    syntax = common_syntax | {"regions": (None, IsA(TetrahedronBox, index=True), 0),
                               "material": (None, IsA(Material, index=True), 1),
                               "density": (None, PosReal(), 2),
                               "tet_format": (None, FinBij({"tetgen": "tetgen", "NASTRAN": "NASTRAN"}), 1),
                               "tet_file": (None, Path(), 2),
                               "scale_factor": ("TSFAC", PosReal(), None)}
 
-    shape = lambda self: (("self", "material", "density", tup_to_def(self.regions), "\\"),
+    shape = lambda self: (("self", "material", "density", "regions", "\\"),
                           "volume\\", "temperature\\", "transform\\", "LAT=3\\",
                           f"tfile={self.tet_file}" if self.tet_format == "tetgen" else f"nfile={self.tet_file}", "scale_factor")
 
     subobjects = set(subobject_syntax.keys())
 
-    def restrictions(self):
-        if len(self.regions) != 1:
-            raise ValueError(f"Tetrahedral cells may have only one TetrahedronBox region; got {self.regions}")
+    # def restrictions(self):
+    #     if len(self.regions) != 1:
+    #         raise ValueError(f"Tetrahedral cells may have only one TetrahedronBox region; got {self.regions}")
+        # if self.forced_collisions is not None and self.repeated_collisions is not None:
+        #     raise ValueError(f"Cannot set both forced_collisions and repeated_collisions on a Tetrahedral cell.")
 
     def __or__(self, other): # Union of cells; adopts leftmost's properties
         r = deepcopy(self)
@@ -96,24 +78,25 @@ class Tetrahedral(PhitsObject):
 
 
 class Void(PhitsObject):
+    """A region with no material, just vacuum."""
     name = "cell"
-    syntax = common_syntax | {"regions": (None, List(surface_spec), 0)}
-    shape = lambda self: (("self", "0", tup_to_def(self.regions), "\\"), "volume\\", "temperature\\", "transform\\", "")
+    syntax = common_syntax | {"regions": (None, RegionTuple(surface_spec), 0)}
+    shape = lambda self: (("self", "0", "regions", "\\"), "volume\\", "temperature\\", "transform\\", "")
     subobjects = set(subobject_syntax.keys())
 
     def __or__(self, other): # Union of cells; adopts leftmost's properties
         r = deepcopy(self)
-        setattr(r, "regions", self.regions + ("|",) + other.regions)
+        setattr(r, "regions", (self.regions,) + ("|",) + (other.regions,))
         return r
 
     def __invert__(self): # Set complement of cell; new cell has old properties
         r = deepcopy(self)
-        r.regions = ("~", self.regions)
+        r.regions = ("~", (self.regions,))
         return r
 
     def __and__(self, other): # Intersection of cells; drops properties
         r = deepcopy(self)
-        r.regions = self.regions + other.regions
+        r.regions = (self.regions,) + (other.regions,)
         return r
 
     def __rshift__(self, other): # returns other's regions with self's properties
@@ -126,27 +109,35 @@ class Void(PhitsObject):
         r.regions = self.regions
         return r
 
+    # def restrictions(self):
+    #     if len(self.regions) != 1:
+    #         raise ValueError(f"Tetrahedral cells may have only one TetrahedronBox region; got {self.regions}")
+        # if self.forced_collisions is not None and self.repeated_collisions is not None:
+        #     raise ValueError(f"Cannot set both forced_collisions and repeated_collisions on a Tetrahedral cell.")
+
+
 class OuterVoid(PhitsObject):
+    """Void, but different for some reason. Probably shouldn't be used directly;
+    `run_phits` creates the required OuterVoid for you automatically."""
     name = "cell"
-    syntax = common_syntax | {"regions": (None, List(surface_spec), 0)}
-    shape = lambda self: (("self", "-1", tup_to_def(self.regions), "\\"), "volume\\", "temperature\\", "transform\\", "")
+    syntax = common_syntax | {"regions": (None, RegionTuple(surface_spec), 0)}
+    shape = lambda self: (("self", "-1", "regions", "\\"), "volume\\", "temperature\\", "transform\\", "")
     subobjects = set(subobject_syntax.keys())
 
     def __or__(self, other): # Union of cells; adopts leftmost's properties
         r = deepcopy(self)
-        setattr(r, "regions", self.regions + ("|",) + other.regions)
+        setattr(r, "regions", (self.regions,) + ("|",) + (other.regions,))
         return r
 
     def __invert__(self): # Set complement of cell; new cell has old properties
         r = deepcopy(self)
-        r.regions = ("~", self.regions)
+        r.regions = ("~", (self.regions,))
         return r
 
     def __and__(self, other): # Intersection of cells; drops properties
         r = deepcopy(self)
-        r.regions = self.regions + other.regions
+        r.regions = (self.regions,) + (other.regions,)
         return r
-
     def __rshift__(self, other): # returns other's regions with self's properties
         r = deepcopy(self)
         r.regions = other.regions
@@ -159,28 +150,29 @@ class OuterVoid(PhitsObject):
 
 # TODO: operations
 class Cell(PhitsObject):
+    """The prototypical `Cell`, consisting of the intersection of several regions defined by surfaces with a material of some density."""
     name = "cell"
-    syntax = common_syntax | {"regions": (None, List(surface_spec), 0),
+    syntax = common_syntax | {"regions": (None, RegionTuple(surface_spec), 0),
                               "material": (None, IsA(Material, index=True), 1),
                               "density": (None, PosReal(), 2)}
-    shape = lambda self: (("self", "material", "density", tup_to_def(self.regions), "\\"),
+    shape = lambda self: (("self", "material", "density", "regions", "\\"),
                           "volume\\", "temperature\\", "transform\\", "")
 
     subobjects = set(subobject_syntax.keys())
 
     def __or__(self, other): # Union of cells; adopts leftmost's properties
         r = deepcopy(self)
-        setattr(r, "regions", self.regions + ("|",) + other.regions)
+        setattr(r, "regions", (self.regions,) + ("|",) + (other.regions,))
         return r
 
     def __invert__(self): # Set complement of cell; new cell has old properties
         r = deepcopy(self)
-        r.regions = ("~", self.regions)
+        r.regions = ("~", (self.regions,))
         return r
 
-    def __and__(self, other): # Intersection of cells; adopts leftmost's properties
+    def __and__(self, other): # Intersection of cells; drops properties
         r = deepcopy(self)
-        r.regions = self.regions + other.regions
+        r.regions = (self.regions,) + (other.regions,)
         return r
 
     def __rshift__(self, other): # returns other's regions with self's properties
@@ -196,5 +188,5 @@ class Cell(PhitsObject):
 # idea: generate a UUID for the universe/fill, and then map UUIDs -> index at runtime
 # other idea: make a Universe class, define an __init__, and make a call to super() for the normal __init__,
 # but use the rest of __init__ to set the right attributes on the underlying cells, and marshall definitions
-def fill_universe(mask: Cell, contents: list[Cell]):
-    pass
+# def fill_universe(mask: Cell, contents: list[Cell]):
+#     pass
