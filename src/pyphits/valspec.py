@@ -1,3 +1,5 @@
+"""Type definitions used to streamline: class definitions, error handling and reporting, and testing."""
+
 from functools import partial
 from hypothesis.strategies import *
 from hypothesis import assume
