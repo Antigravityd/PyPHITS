@@ -251,33 +251,25 @@ class FinBij(ValSpec):
 
 
 @composite
-def builds_right(draw, cl, re, op):
+def builds_right(draw, cls, omit=lambda x: True):
+    req = list(map(lambda x: tuples(*[i.strat for i in x[1][1]]) if isinstance(x[1][1], tuple) else x[1][1].strat,
+                   filter(omit, cls.required_args())))
+    opt = dict(map(lambda x: (x[0], one_of(none(), tuples(*[i.strat for i in x[1][1]])) if isinstance(x[1][1], tuple) \
+                              else one_of(none(), x[1][1].strat)),
+                   filter(omit, cls.optional_args())))
+
     try:
-        ob = draw(builds(cl, *re, **op))
+        ob = draw(builds(cls, *req, **opt))
     except ValueError as e:
         ob = None
 
     assume(ob)
     return ob
 
+
 class IsA(ValSpec):
     def __init__(self, cls, index=False):
-        req = []
-        for phits_iden, valspec, idx, *s in sorted((v for v in cls.syntax.values() if v[2] is not None), key=lambda t: t[2]):
-            if isinstance(valspec, tuple):
-                req.append(tuples(*[i.strat for i in valspec]))
-            else:
-                req.append(valspec.strat)
-
-        opt = dict()
-        for py_iden, (phits_iden, valspec, idx, *s) in filter(lambda t: t[1][2] is None, cls.syntax.items()):
-            if isinstance(valspec, tuple):
-                opt[py_iden] = one_of(none(), tuples(*[i.strat for i in valspec]))
-            else:
-                opt[py_iden] = one_of(none(), valspec.strat)
-
-
-        super().__init__(builds_right(cls, req, opt)) # TODO: sus
+        super().__init__(builds_right(cls))
         self.cls = cls
         self.index = index
 
@@ -336,7 +328,7 @@ class Tuple(ValSpec):
         self.entr = entr
 
     def phits(self, val):
-        return tuple(map(lambda t: self.entr[t[0]].phits(t[1]), enumerate(val)))
+        return " ".join(str(i) for i in tuple(map(lambda t: self.entr[t[0]].phits(t[1]), enumerate(val))))
 
     def python(self, val):
         return tuple(map(lambda t: self.entr[t[0]].python(t[1]), enumerate(val)))
@@ -926,9 +918,9 @@ class Color(ValSpec):
         if val in named_colors :
             return val
         elif isinstance(val, tuple) and len(val) == 3 and all(map(lambda x: 0 <= x <= 1, val)):
-            return f"{{ {val[0]} {val[1]} {val[2]} }}"
+            return f"{{ {val[0]:.5f} {val[1]:.5f} {val[2]:.5f} }}"
         else:
-            return partial(lambda va, var: ValueError(f"`{va}` must be a valid color; got {val}."), val)
+            return partial(lambda va, var: ValueError(f"`{var}` must be a valid color; got {va}."), val)
 
     def description(self):
         return "a color"
@@ -973,3 +965,29 @@ class RegionTuple(ValSpec):
     def description(self):
         return "a recursive tuple of surfaces with set operation semantics: \"~\" negates what follows, infix \"|\" unions, " \
             "and juxtaposition intersects"
+
+@composite
+def interval(draw, lbd, ubd):
+    st = draw(floats(min_value=lbd, max_value=ubd, exclude_max=ubd is not None, allow_nan=False, allow_infinity=False, allow_subnormal=False,
+                     width=16))
+    end = draw(floats(min_value=st, max_value=ubd, exclude_min=lbd is not None, allow_nan=False, allow_infinity=False, allow_subnormal=False,
+                      width=16))
+    return (st, end)
+
+class Interval(ValSpec):
+    def __init__(self, lower_bound=float("-inf"), upper_bound=float("inf")):
+        super().__init__(interval(lower_bound if lower_bound != float("-inf") else None,
+                                  upper_bound if upper_bound != float("inf") else None))
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+    def phits(self, val):
+        if isinstance(val, tuple) and isinstance(val[0], float) and isinstance(val[1], float) \
+           and self.lower_bound <= val[0] <= self.upper_bound and self.lower_bound <= val[1] <= self.upper_bound:
+            return f"{val[0]} {val[1]}"
+        else:
+            return partial(lambda va, var: ValueError(f"`{var}` must be a well-formed interval contained in"
+                                                      f"({self.lower_bound}, {self.upper_bound}); got {val}."), val)
+
+    def description(self):
+        return f"a tuple of length 2 contained in ({self.lower_bound}, {self.upper_bound})"

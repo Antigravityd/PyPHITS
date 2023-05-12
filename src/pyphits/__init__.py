@@ -1,6 +1,14 @@
-"""The user-facing module."""
+"""This is a Python interface to JAEA's [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp)."""
 
-from valspec import *
+# TODOs:
+# Counter/multiplier in tally
+# Radioisotope and CosmicRay energy distributions
+# Dir = iso for spherical shell sources (necessary for CosmicRay to be used properly)
+# readable_remapping
+# nuclide-specific library settings
+# paper
+
+from pyphits.valspec import *
 
 import sys
 import numpy as np
@@ -14,6 +22,9 @@ import pandas as pd
 import tempfile as tf
 import re
 import os
+from copy import deepcopy
+from fortranformat import FortranRecordReader
+from shutil import copy
 
 # Configuration options
 readable_remapping = True
@@ -406,6 +417,15 @@ class Parameters():
         r += f"{self.syntax[attr][0]}\t{self.syntax[attr][1]}\t{self.syntax[attr][2]}"
         return r
 
+    @classmethod
+    def required_args(self):
+        """The required arguments from `self.syntax`, in order."""
+        return list(sorted(((k, v) for k, v in self.syntax.items() if v[2] is not None), key=lambda t: t[1][2]))
+
+    @classmethod
+    def optional_args(self):
+        """The optional arguments from `self.syntax`."""
+        return list(filter(lambda t: t[1][2] is None, self.syntax.items()))
 
 
 def _tuplify(xs: list) -> tuple:
@@ -513,8 +533,7 @@ class PhitsObject:
         assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
 
         # Handle required args
-        required = list(map(lambda tup: tup[0],
-                            sorted([(k, v) for k, v in self.syntax.items() if v[2] is not None], key=lambda tup: tup[1][2])))
+        required = list(map(lambda tup: tup[0], self.required_args()))
 
         assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self} object."
         for idx, arg in enumerate(args):
@@ -749,16 +768,29 @@ class PhitsObject:
         except:
             p.text(str(self.__dict__))
 
+    @classmethod
+    def required_args(self):
+        """The required arguments from `self.syntax`, in order."""
+        return list(sorted(((k, v) for k, v in self.syntax.items() if v[2] is not None), key=lambda t: t[1][2]))
+
+    @classmethod
+    def optional_args(self):
+        """The optional arguments from `self.syntax`."""
+        return list(filter(lambda t: t[1][2] is None, self.syntax.items()))
+
+
 ## DISTRIBUTION
 class TimeDistribution(PhitsObject):
     """An arbitrary distribution of source weights over time."""
     name = "source"
-    syntax = {"bins": (None, List(PosReal(), PosReal()), 0),
+    syntax = {"bins": (None, List(Tuple(PosReal(), PosReal())), 0),
+              "last_bin": (None, PosReal(), 1),
               "particle_production": (None, List(PosReal()), None)}
 
-    shape = lambda slf: ("t-type = 4" if slf.particle_generation else "t-type = 3",
+    shape = lambda slf: ("t-type = 4" if slf.particle_production else "t-type = 3",
                          f"ntt = {len(slf.bins)}",
-                         "\n".join(" ".join(str(j[0]) + " " + str(j[i]) for j in i) for i in slf.bins),
+                         "\n".join(zastr(j[0]) + " " + str(j[1]) for j in slf.bins),
+                         ("last_bin",),
                          "o-type = 1\n" + " ".join((str(i) for i in slf.particle_production)) if slf.particle_production else "")
 
 
@@ -911,21 +943,16 @@ class Cone(PhitsObject):
     R_1 and R_2 respectively."""
     name = "surface"
     syntax = surface_common | {"center": (None, Tuple(Real(), Real(), Real()), 0),
-                       "height": (None, Tuple(Real(), Real(), Real()), 1),
-                       "bottom_r": (None, PosReal(), 2),
-                       "top_r": (None, PosReal(), 3)}
+                               "height": (None, Tuple(Real(), Real(), Real()), 1),
+                               "radii": (("top", "bottom"), Interval(0), 2)}
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform",
-                           "TRC", " ".join(str(i) for i in self.center), " ".join(str(i) for i in self.height), "bottom_r", "top_r"),)
+                           "TRC", "center", "height", "radii"),)
 
     def restrictions(self):
         if self.height == (0, 0, 0):
             raise ValueError("Cone must have a nonzero height vector.")
-
-        if self.bottom_r <= self.top_r:
-            raise ValueError("Cone must have a top radius smaller than its bottom radius;"
-                             f" got bottom_r={self.bottom_r} and top_r={self.top_r}.")
 
 
 
@@ -962,16 +989,11 @@ class Torus(PhitsObject): # torus parallel to an axis of the form
     name = "surface"
     syntax = surface_common | {"axis": (None, FinBij({"x": "X", "y": "Y", "z":"Z"}), 0),
                        "center": ((None, None, None), (Real(), Real(), Real()), 1),
-                       "scales": ((None, None, None), (Real(), PosReal(), PosReal()), 2)}
+                       "scales": ((None, None, None), (PosReal(), PosReal(), PosReal()), 2)}
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            f"T{self.axis}", "center", "scales"),)
 
-    def restrictions(self):
-        if self.scales[0] == 0 or self.scales[1] == 0 or self.scales[2] == 0:
-            raise ValueError(f"Torus's scales must be nonzero; got {self.scales}")
-        # if self.transform is not None and not self.transform.rotate_first: # skew
-        #     raise ValueError()
 
 
 class Box(PhitsObject): # box formed by three vectors with tails at a given base point, or cross product of 3 intervals,
@@ -1048,21 +1070,17 @@ class Wedge(PhitsObject):
 
 class TetrahedronBox(PhitsObject):
     name = "surface"
-    syntax = surface_common | {"xrange": ((None, None), (Real(), Real()), 0),
-                       "yrange": ((None, None), (Real(), Real()), 1),
-                       "zrange": ((None, None), (Real(), Real()), 2)}
+    syntax = surface_common | {"xrange": ((None, None), Interval(), 0),
+                               "yrange": ((None, None), Interval(), 1),
+                               "zrange": ((None, None), Interval(), 2)}
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                             (f"+{self.index}" if self.white else f"{self.index}"),
                             "transform", "RPP", "xrange", "yrange", "zrange"),)
 
-    def restrictions(self):
-        if self.xrange[0] >= self.xrange[1] or self.yrange[0] >= self.yrange[1] or self.zrange[0] >= self.zrange[1]:
-            raise ValueError("EllipticalCylinder must have well-formed range intevals;"
-                             f" got xrange={self.xrange}, yrange={self.yrange}, zrange={self.zrange}.")
 
 
-surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
+_surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
                      IsA(Sphere, index=True), IsA(Cylinder, index=True), IsA(Cone, index=True), IsA(SimpleConic, index=True),
                      IsA(GeneralConic, index=True), IsA(Box, index=True), # IsA(Torus, index=True), IsA(HexagonalPrism, index=True),
                      IsA(EllipticalCylinder, index=True), IsA(Spheroid, index=True), IsA(Wedge, index=True), IsA(TetrahedronBox, index=True))
@@ -1180,20 +1198,6 @@ class TrackStructure(PhitsObject):
     prelude = (("reg", "mID"),)
     shape = lambda self: (("cell", "model"),)
 
-
-
-# TODO: seemingly irremovable circularity here (it wants cells, not surfaces for reflection_surface)
-# class SuperMirror(PhitsObject):
-#     name = "super_mirror"
-#     syntax = {"reflection_surface": ((None, None), (surface_spec, surface_spec), 0),
-#               "material_constant": (None, Real(), 1),
-#               "reflectivity": (None, Real(), 2),
-#               "critical_q": (None, Real(), 3),
-#               "falloff_rate": (None, Real(), 4),
-#               "cutoff_width": (None, PosReal(), 5)}
-#     superobjects = ["cell"]
-#     prelude = (("r-in", "r-out", "mm", "r0", "qc", "am", "wm"),)
-#     shape = (("reflection_surface", "material_constant", "reflectivity", "critical_q", "falloff_rate", "cutoff_width"),)
 
 
 
@@ -1351,7 +1355,6 @@ class RepeatedCollisions(PhitsObject):
 
     @classmethod
     def global_restrictions(self, type_divided):
-        # Doesn't work because cell isn't set at __init__
         for rc in type_divided["repeated_collisions"]:
             possible = set(map(lambda x: kf_encode(x[0]), rc.cell.material.composition))
             if any(kf_encode(x) not in possible for x in rc.mother):
@@ -1450,7 +1453,7 @@ class MatNameColor(PhitsObject):
               "color": (None, Color(), 2)} # TODO: color
 
     superobjects = ["material"]
-    prelude = (("mat", "name", "\\size", "\\color"),)
+    prelude = (("mat", "name", "'size", "'color"),)
     shape = (("material", "mat_name", "size", "color"),)
 
 
@@ -1472,7 +1475,6 @@ class Material(PhitsObject): # Composition is a list of pairs of (<element name 
               "thermal_lib": (None, ThermalLib(), None),
               "chemical": ("chem", List(Tuple(Chemical(), PosInt())), None),
               "data_max": (None, IsA(DataMax, index=True), None),
-              # "mat_time_change": (None, IsA(MatTimeChange, index=True), None),
               "mat_name_color": (None, IsA(MatNameColor, index=True), None)
               }
     subobjects = ["data_max", "mat_time_change", "mat_name_color"]
@@ -1495,14 +1497,6 @@ class Material(PhitsObject): # Composition is a list of pairs of (<element name 
 
 
 
-# TODO: irremovable circularity
-# class MatTimeChange(PhitsObject):
-#     name = "mat_time_change"
-#     syntax = {"time": (None, PosReal(), 0, "non"),
-#               "new": (None, IsA(Material, index=True), 1, "non"),
-#               "old": (None, IsA(Material, index=True), None)}
-#     prelude = (("mat", "'time", "change"))
-#     shape = (("old", "time", "new"))
 
 ## SURFACE
 
@@ -1614,8 +1608,9 @@ class Cone(PhitsObject):
 
 
 
-class SimpleConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid parallel to an axis of the form
-                   # A(x-x0)^2+B(y-y0)^2+C(z-z0)^2+2D(x-x0)+2E(y-y0)+2F(z-z0)+G = 0
+class SimpleConic(PhitsObject):
+    """An ellipsoid, hyperboloid, or paraboloid parallel to an axis, of the mathematical form \
+    \\(A(x-x0)^2+B(y-y0)^2+C(z-z0)^2+2D(x-x0)+2E(y-y0)+2F(z-z0)+G = 0\\)."""
     name = "surface"
     syntax = surface_common | {"quadratic": ((None, None, None), (Real(), Real(), Real()), 0),
                        "linear": ((None, None, None), (Real(), Real(), Real()), 1),
@@ -1630,6 +1625,8 @@ class SimpleConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid parallel
 
 class GeneralConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid of the form
                     # A(x-x0)^2+B(y-y0)^2+C(z-z0)^2+Dxy+Eyz+Fzx+Gx+Hy+Jz+K = 0
+    """An arbitrary ellipsoid, hyperboloid, or paraboloid, of the mathematical form \
+    \\(A(x-x0)^2+B(y-y0)^2+C(z-z0)^2+Dxy+Eyz+Fzx+Gx+Hy+Jz+K = 0\\)."""
     name = "surface"
     syntax = surface_common | {"quadratic": ((None, None, None), (Real(), Real(), Real()), 0),
                        "mixed": ((None, None, None), (Real(), Real(), Real()), 1),
@@ -1640,9 +1637,10 @@ class GeneralConic(PhitsObject): # ellipsoid, hyperboloid, or paraboloid of the 
                            (f"+{self.index}" if self.white else f"{self.index}"),
                            "transform", "GQ", "quadratic", "mixed", "linear", "constant"),)
 
-# TODO: I don't know what "skewed" means for transfomations on tori, so disabling for now.
-class Torus(PhitsObject): # torus parallel to an axis of the form
-             # (axisvar - axis0)^2/B^2 + (quadrature(<non-axis displacements>) - A)^2 - 1 = 0
+
+class Torus(PhitsObject):
+    """A torus parallel to an axis, of the mathematical form \
+    \\((x - x_0)^2/B^2 + (\sqrt{(y - y_0)^2 + (z - z_0)^2} - A)^2 - 1 = 0\\) (where the variable quantities may be permuted)."""
     name = "surface"
     syntax = surface_common | {"axis": (None, FinBij({"x": "X", "y": "Y", "z":"Z"}), 0),
                        "center": ((None, None, None), (Real(), Real(), Real()), 1),
@@ -1660,6 +1658,7 @@ class Torus(PhitsObject): # torus parallel to an axis of the form
 
 class Box(PhitsObject): # box formed by three vectors with tails at a given base point, or cross product of 3 intervals,
            # stored in the form x0 y0 z0 Ax Ay Az Bx By Bz Cx Cy Cz
+    """A box given by a displacement vector to a corner and three orthogonal vectors defining its walls."""
     name = "surface"
     syntax = surface_common | {"base": ((None, None, None), (Real(), Real(), Real()), 0),
                        "walls": (None, OrthogonalMatrix(), 1)}
@@ -1688,6 +1687,7 @@ class Box(PhitsObject): # box formed by three vectors with tails at a given base
 
 
 class EllipticalCylinder(PhitsObject):
+    """An ellipse extruded into a cylinder, given by a center point and a three orthogonal vectors defining the extrusion and axes."""
     name = "surface"
     syntax = surface_common | {"center": ((None, None, None), (Real(), Real(), Real()), 0),
                        "axes": (None, OrthogonalMatrix(), 1)}
@@ -1698,6 +1698,7 @@ class EllipticalCylinder(PhitsObject):
 
 
 class Spheroid(PhitsObject):
+    """An ellipsoid of revolution given by two foci and an axis length (major is positive, minor is negative)."""
     name = "surface"
     syntax = surface_common | {"focus1": ((None, None, None), (Real(), Real(), Real()), 0),
                        "focus2": ((None, None, None), (Real(), Real(), Real()), 1),
@@ -1711,14 +1712,15 @@ class Spheroid(PhitsObject):
             raise ValueError(f"Spheroid must have distinct foci; got focus1={self.focus1} and focus2={self.focus2}.")
 
         if self.major_axis == 0:
-            raise ValueError("Spheroid must have a nonzero major axis length.")
+            raise ValueError("Spheroid must have a nonzero axis length.")
 
         if self.major_axis - np.linalg.norm(np.array(self.focus1) - np.array(self.focus2)) <= 0:
-            raise ValueError("Spheroid must have nonzero major axis length larger than the distance betwen its foci;"
+            raise ValueError("Spheroid must have nonzero axis length larger than the distance betwen its foci;"
                              f" got major_axis={self.major_axis}, focus1={self.focus1}, and focus2={self.focus2}.")
 
 
 class Wedge(PhitsObject):
+    """A (right-triangle) wedge shape given by a tip point and three orthogonal vectors forming the sides."""
     name = "surface"
     syntax = surface_common | {"tip": ((None, None, None), (Real(), Real(), Real()), 0),
                        "sides": (None, OrthogonalMatrix(), 1)}
@@ -1731,6 +1733,8 @@ class Wedge(PhitsObject):
 
 
 class TetrahedronBox(PhitsObject):
+    """An especially simple `Box` whose sides are parallel to the axes; required as the surface containing `Tetrahedral`'s \
+    tetrahedrons."""
     name = "surface"
     syntax = surface_common | {"xrange": ((None, None), (Real(), Real()), 0),
                        "yrange": ((None, None), (Real(), Real()), 1),
@@ -1746,7 +1750,7 @@ class TetrahedronBox(PhitsObject):
                              f" got xrange={self.xrange}, yrange={self.yrange}, zrange={self.zrange}.")
 
 # TODO: Torus, HexagonalPrism
-surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
+_surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(ParallelPlane, index=True),
                      IsA(Sphere, index=True), IsA(Cylinder, index=True), IsA(Cone, index=True), IsA(SimpleConic, index=True),
                      IsA(GeneralConic, index=True), IsA(Box, index=True), # IsA(Torus, index=True), IsA(HexagonalPrism, index=True),
                      IsA(EllipticalCylinder, index=True), IsA(Spheroid, index=True), IsA(Wedge, index=True),
@@ -1755,13 +1759,12 @@ surface_spec = OneOf(IsA(Plane, index=True), IsA(PointPlane, index=True), IsA(Pa
 
 ## CELL
 
-_subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True), #), None),
-                                                   IsA(MappedMagneticField, index=True)), None),
-                    "electromagnetic_field": (None, OneOf(IsA(UniformElectromagneticField, index=True),#), None),
-                                                          IsA(MappedElectromagneticField, index=True)), None),
+_subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=True), IsA(NeutronMagneticField, index=True), ), None),
+                                                   # IsA(MappedMagneticField, index=True)), None),
+                    "electromagnetic_field": (None, OneOf(IsA(ElectromagneticField, index=True),), None),
+                                                          # IsA(MappedElectromagneticField, index=True)), None),
                     "delta_ray": (None, IsA(DeltaRay, index=True), None),
                     "track_structure": (None, IsA(TrackStructure, index=True), None),
-                    # "super_mirror": (None, IsA(SuperMirror, index=True), None),
                     "elastic_option": (None, IsA(ElasticOption, index=True), None),
                     "importance": (None, IsA(Importance, index=True), None),
                     "weight_window": (None, IsA(WeightWindow, index=True), None),
@@ -1773,8 +1776,8 @@ _subobject_syntax = {"magnetic_field": (None, OneOf(IsA(MagneticField, index=Tru
                     "timer": (None, IsA(Timer, index=True), None)}
 
 _cell_common_syntax = _subobject_syntax | {"volume": ("VOL", PosReal(), None),
-                                    "temperature": ("TMP", PosReal(), None),
-                                    "transform": ("TRCL", IsA(Transform, index=True), None)}
+                                           "temperature": ("TMP", PosReal(), None),
+                                           "transform": ("TRCL", IsA(Transform, index=True), None)}
 
 class Tetrahedral(PhitsObject):
     """A `Cell` that's a box filled with tetrahedrons from a file. Extremely computationally efficient."""
@@ -1800,19 +1803,18 @@ class Tetrahedral(PhitsObject):
 
     def __or__(self, other): # Union of cells; adopts leftmost's properties
         r = deepcopy(self)
-        setattr(r, "regions", self.regions + ("|",) + other.regions)
+        setattr(r, "regions", (self.regions,) + ("|",) + (other.regions,))
         return r
 
     def __invert__(self): # Set complement of cell; new cell has old properties
         r = deepcopy(self)
-        r.regions = ("~", self.regions)
+        r.regions = ("~", (self.regions,))
         return r
 
     def __and__(self, other): # Intersection of cells; drops properties
         r = deepcopy(self)
-        r.regions = self.regions + other.regions
+        r.regions = (self.regions,) + (other.regions,)
         return r
-
     def __rshift__(self, other): # returns other's regions with self's properties
         r = deepcopy(self)
         r.regions = other.regions
@@ -1828,7 +1830,7 @@ class Tetrahedral(PhitsObject):
 class Void(PhitsObject):
     """A `Cell` with no material, just vacuum."""
     name = "cell"
-    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(surface_spec), 0)}
+    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(_surface_spec), 0)}
     shape = lambda self: (("self", "0", "regions", "\\"), "volume\\", "temperature\\", "transform\\", "")
     subobjects = set(_subobject_syntax.keys())
 
@@ -1857,18 +1859,13 @@ class Void(PhitsObject):
         r.regions = self.regions
         return r
 
-    # def restrictions(self):
-    #     if len(self.regions) != 1:
-    #         raise ValueError(f"Tetrahedral cells may have only one TetrahedronBox region; got {self.regions}")
-        # if self.forced_collisions is not None and self.repeated_collisions is not None:
-        #     raise ValueError(f"Cannot set both forced_collisions and repeated_collisions on a Tetrahedral cell.")
 
 
 class OuterVoid(PhitsObject):
     """Void, but different for some reason. Probably shouldn't be used directly;
     `run_phits` creates the required OuterVoid for you automatically."""
     name = "cell"
-    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(surface_spec), 0)}
+    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(_surface_spec), 0)}
     shape = lambda self: (("self", "-1", "regions", "\\"), "volume\\", "temperature\\", "transform\\", "")
     subobjects = set(_subobject_syntax.keys())
 
@@ -1900,7 +1897,7 @@ class OuterVoid(PhitsObject):
 class Cell(PhitsObject):
     """The prototypical `Cell`, consisting of the intersection of several regions defined by surfaces with a material of some density."""
     name = "cell"
-    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(surface_spec), 0),
+    syntax = _cell_common_syntax | {"regions": (None, RegionTuple(_surface_spec), 0),
                               "material": (None, IsA(Material, index=True), 1),
                               "density": (None, PosReal(), 2)}
     shape = lambda self: (("self", "material", "density", "regions", "\\"),
@@ -1933,11 +1930,40 @@ class Cell(PhitsObject):
         r.regions = self.regions
         return r
 
+_cell_spec = OneOf(IsA(Cell, index=True), IsA(Tetrahedral, index=True), IsA(Void, index=True))
 # idea: generate a UUID for the universe/fill, and then map UUIDs -> index at runtime
 # other idea: make a Universe class, define an __init__, and make a call to super() for the normal __init__,
 # but use the rest of __init__ to set the right attributes on the underlying cells, and marshall definitions
 # def fill_universe(mask: Cell, contents: list[Cell]):
 #     pass
+
+## MISC 2
+
+class SuperMirror(PhitsObject):
+    """Enables calculation of low-energy neutron super-mirror reflections off the boundary between two `Cell`s via an empirical formula.\
+    """
+    name = "super_mirror"
+    syntax = {"into": ("r-in", IsA(Cell, index=True), 0),
+              "from": ("r-out", IsA(Cell, index=True), 1),
+              "reflection_surface": ((None, None), (_surface_spec, _surface_spec), 2),
+              "material_constant": (None, Real(), 3),
+              "reflectivity": (None, Real(), 4),
+              "critical_q": (None, Real(), 5),
+              "falloff_rate": (None, Real(), 6),
+              "cutoff_width": (None, PosReal(), 7)}
+
+    prelude = (("r-in", "r-out", "mm", "r0", "qc", "am", "wm"),)
+    shape = (("reflection_surface", "material_constant", "reflectivity", "critical_q", "falloff_rate", "cutoff_width"),)
+
+class MatTimeChange(PhitsObject):
+    """At a certain time, change the material old to material new."""
+    name = "mat_time_change"
+    syntax = {"time": (None, PosReal(), 0),
+              "new": (None, IsA(Material, index=True), 1),
+              "old": (None, IsA(Material, index=True), 2)}
+    prelude = (("mat", "'time", "change"),)
+    shape = (("old", "time", "new"),)
+
 
 
 ## SOURCE
@@ -2156,21 +2182,25 @@ class TetrahedralSource(PhitsObject): # TODO: subobjects
     """A `Tetrahedral`ly-defined solid source."""
     name = "source"
     syntax = _source_common | {"cell": ("tetreg", IsA(Tetrahedral, index=True), 2)} | _source_semi_common
-    shape = ("s-type = 24", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "cell", "elevation", "azimuth", "dispersion", ("spectrum",))
+    shape = lambda self: ("s-type = 24", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "cell",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
 
 class SurfaceSource(PhitsObject):
     """A solid source defined by some part of a surface."""
     name = "source"
-    syntax = _source_common | {"surface": ("suf", surface_spec, 2),
-                       "cut": ("cut", List(surface_spec), 3)} | _source_semi_common
-    shape = ("s-type = 26", "projectile", "spin", "mask", "transform", "weight", "counter_start",
-             "charge_override", "fissile", "surface", "cut", "elevation", "azimuth", "dispersion", ("spectrum",))
+    syntax = _source_common | {"surface": ("suf", _surface_spec, 2),
+                               "cut": ("cut", List(_surface_spec, max_len=8), 3)} | _source_semi_common
+    shape = lambda self: ("s-type = 26", "projectile", "spin", "mask", "transform", "weight", "counter_start",
+                          "charge_override", "fissile", "surface", "cut",
+                          (f"dir = data\n{self.elevation.definition()}" if isinstance(self.elevation, AngleDistribution) \
+                           else f"dir = {self.elevation}") if self.elevation is not None else "", "azimuth", "dispersion", ("spectrum",))
 
-source_spec = OneOf(IsA(Cylindrical, index=True), IsA(Rectangular, index=True), IsA(Gaussian, index=True),
-                    IsA(GaussianPrism, index=True), IsA(Parabolic, index=True), IsA(ParabolicPrism, index=True),
-                    IsA(Spherical, index=True), IsA(Beam, index=True), IsA(Conical, index=True), IsA(TrianglePrism, index=True),
+_source_spec = OneOf(IsA(Cylindrical, index=True), IsA(Rectangular, index=True), IsA(Gaussian, index=True),
+                    IsA(GaussianSlices, index=True), IsA(Parabolic, index=True), IsA(ParabolicSlices, index=True),
+                    IsA(Spherical, index=True), IsA(Beam, index=True), IsA(Conical, index=True), IsA(TriangularPrism, index=True),
                     IsA(TetrahedralSource, index=True), IsA(SurfaceSource, index=True))
 
 # No dump file or user source (for the latter, you can write your own PhitsObject)
@@ -2184,6 +2214,7 @@ class DumpFluence(PhitsObject):
     name = "t-cross"
     syntax = {"out": (None, IsA(Cell, index=True), 0),
               "into": (None, IsA(Cell, index=True), 1),
+              "area": (None, PosReal(), 2),
               "data": ("dump", List(FinBij({"particle": 1, "x": 2, "y": 3, "z": 4, "u": 5, "v": 6, "w": 7, "energy": 8, "weight": 9,
                                             "time": 10, "counter1": 11, "counter2": 12, "counter3": 13, "spinx": 14, "spiny": 15,
                                             "spinz": 16, "collision_number": 17, "history_number": 18, "batch_number": 19,
@@ -2194,33 +2225,34 @@ class DumpFluence(PhitsObject):
               # "counter": ()
               "maximum_error": ("stdcut", PosReal(), None),
               # "multiplier": ()
-              "energy_mesh": (("emin", "emax", "ne"), (PosReal(), PosReal(), PosInt()), None),
-              "angle_mesh": (("amin", "amax", "na"), (PosReal(), PosReal(), PosInt()), None),
+              # TODO: set Between() back to PosInt; done because otherwise memory overflows on my machine during tests
+              "energy_mesh": (("emin", "emax", "ne"), (Interval(0), Between(1, 50)), 5),
+              "angle_mesh": (("amin", "amax", "na"), (Interval(-1, 1), Between(1, 50)), 6),
               "angle_semantics": ("iangform", FinBij({"to_normal": 0, "to_x": 1, "to_y": 2, "to_z": 3}), None),
-              "time_mesh": (("tmin", "tmax", "nt"), (PosReal(), PosReal(), PosInt()), None),
-              "area": (None, PosReal(), None, "non"),}
+              "time_mesh": (("tmin", "tmax", "nt"), (Interval(0), Between(1, 50)), None)}
 
     prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = cross{self.index}", "factor", "output", "maximum_error",
                             f"dump = -{len(self.data)}", ("data",),
-                            "e-type = 2", "energy_mesh", "a-type = 2", "angle_mesh", "iangform", "t-type = 2", "time_mesh",
+                            "e-type = 2", f"emin = {self.energy_mesh[0][0]}", f"emax = {self.energy_mesh[0][1]}",
+                            f"ne = {self.energy_mesh[1]}",
+                            f"a-type = 2\namin = {self.angle_mesh[0][0]}\namax = {self.angle_mesh[0][1]}\nna = {self.angle_mesh[1]}" \
+                            if self.angle_mesh is not None else "", "angle_semantics",
+                            f"t-type = 2\ntmin = {self.angle_mesh[0][0]}\ntmax = {self.time_mesh[0][1]}\nnt = {self.time_mesh[1]}" \
+                            if self.time_mesh is not None else "",
                             "mesh = reg", f"reg = {self.group_size}",
                             ("r-from", "r-to", "'area"))
 
     shape = lambda self: ((f"{self.out.index}", f"{self.into.index}", "area"),)
 
-    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_bounds, self.angle_bounds,
-                             self.time_bounds)
+    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_mesh, self.angle_mesh,
+                             self.time_mesh)
     separator = lambda self: self.section_title()
-
-    def restrictions(self):
-        if len(set(self.data)) < len(self.data):
-            raise ValueError(f"Duplicate DumpFluence data dump dimension: got {self.data}.")
 
 
 class DumpProduction(PhitsObject):
     """Tally that counts how many particles of some type are created within a `Cell`."""
     name = "t-product"
-    syntax = {"cell": ("reg", IsA(Cell, index=True), 0)
+    syntax = {"cell": ("reg", IsA(Cell, index=True), 0),
               "data": ("dump", List(FinBij({"particle": 1, "x": 2, "y": 3, "z": 4, "u": 5, "v": 6, "w": 7, "energy": 8, "weight": 9,
                                             "time": 10, "counter1": 11, "counter2": 12, "counter3": 13, "spinx": 14, "spiny": 15,
                                             "spinz": 16, "collision_number": 17, "history_number": 18, "batch_number": 19,
@@ -2228,68 +2260,67 @@ class DumpProduction(PhitsObject):
               "output": ("output", FinBij({"source": "source", "nuclear": "nuclear", "nonela": "nonela", "elastic": "elastic",
                                            "decay": "decay", "fission": "fission", "atomic": "atomic"}), 2),
               "particles": ("part", List(Particle(), max_len=6, unique=True), None),
-              "materials": ("material", List(IsA(Material, index=True)), None)
-              "mother": ("material", List(Nuclide(fake=True)), None)
+              "materials": ("material", List(IsA(Material, index=True)), None),
+              "mother": ("material", List(Nuclide(fake=True)), None),
               "factor": ("factor", PosReal(), None),
               # counter
               "maximum_error": ("stdcut", PosReal(), None),
               # "multiplier": ()
-              "energy_mesh": (("emin", "emax", "ne"), (PosReal(), PosReal(), PosInt()), None),
-              "time_mesh": (("tmin", "tmax", "nt"), (PosReal(), PosReal(), PosInt()), None)}
+              # TODO: set Between() back to PosInt; done because otherwise the memory overflows
+              "energy_mesh": (("emin", "emax", "ne"), (Interval(0), Between(1, 50)), 3),
+              "time_mesh": (("tmin", "tmax", "nt"), (Interval(0), Between(1, 50)), None)}
 
 
-    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = product{self.index}", "factor", "output", "maximum_error"
-                            f"material = {len(self.materials)}", ("materials",)
-                            f"mother = {len(self.mother)}", ("mother",)
+    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = product{self.index}", "factor", "output", "maximum_error",
+                            f"material = {len(self.materials)}" if self.materials is not None else "", ("materials",),
+                            f"mother = {len(self.mother)}" if self.mother is not None else "", ("mother",),
                             f"dump = -{len(self.data)}", ("data",),
-                            "e-type = 2", "energy_mesh", "t-type = 2", "time_mesh",
-                            "mesh = reg", "cell")
+                            "e-type = 2", f"emin = {self.energy_mesh[0][0]}", f"emax = {self.energy_mesh[0][1]}",
+                            f"ne = {self.energy_mesh[1]}",
+                            f"t-type = 2\ntmin = {self.time_mesh[0][0]}\ntmax = {self.time_mesh[0][1]}\nnt = {self.time_mesh[1]}" \
+                            if self.time_mesh is not None else "",
+                            "mesh = reg")
 
-    shape = lambda self: ((f"{self.out.index}", f"{self.into.index}", "area"),)
+    shape = ("cell",)
 
-    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_bounds, self.angle_bounds,
-                             self.time_bounds)
+    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_mesh, self.time_mesh)
     separator = lambda self: self.section_title()
 
-    def restrictions(self):
-        if len(set(self.data)) < len(self.data):
-            raise ValueError(f"Duplicate DumpProduct data dump dimension: got {self.data}.")
 
 class DumpTime(PhitsObject):
     """Tally that records how particles' disappearance (via energy cutoff, escape, decay) changes over time in a `Cell`."""
     name = "t-time"
-    syntax = {"cell": ("reg", IsA(Cell, index=True), 0)
+    syntax = {"cell": ("reg", IsA(Cell, index=True), 0),
               "data": ("dump", List(FinBij({"particle": 1, "x": 2, "y": 3, "z": 4, "u": 5, "v": 6, "w": 7, "energy": 8, "weight": 9,
                                             "time": 10, "counter1": 11, "counter2": 12, "counter3": 13, "spinx": 14, "spiny": 15,
                                             "spinz": 16, "collision_number": 17, "history_number": 18, "batch_number": 19,
                                             "cascade_id": 20}), unique=True), 1),
               "output": ("output", FinBij({"all": "all", "cutoff": "cutoff", "escape": "escape", "decay": "decay"}), 2),
               "particles": ("part", List(Particle(), max_len=6, unique=True), None),
-              "materials": ("material", List(IsA(Material, index=True)), None)
+              "materials": ("material", List(IsA(Material, index=True)), None),
               "factor": ("factor", PosReal(), None),
               # counter
               "maximum_error": ("stdcut", PosReal(), None),
               # "multiplier": ()
-              "energy_mesh": (("emin", "emax", "ne"), (PosReal(), PosReal(), PosInt()), None),
-              "time_mesh": (("tmin", "tmax", "nt"), (PosReal(), PosReal(), PosInt()), None)}
+              "energy_mesh": (("emin", "emax", "ne"), (Interval(0), Between(1, 50)), 3),
+              "time_mesh": (("tmin", "tmax", "nt"), (Interval(0), Between(1, 50)), 4)}
 
 
-    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = time{self.index}", "factor", "output", "maximum_error"
-                            f"material = {len(self.materials)}", ("materials",)
-                            f"mother = {len(self.mother)}", ("mother",)
+    prelude = lambda self: ("particles", "unit = 1", "axis = reg", f"file = time{self.index}", "factor", "output", "maximum_error",
+                            f"material = {len(self.materials)}" if self.materials is not None else "", ("materials",),
                             f"dump = -{len(self.data)}", ("data",),
-                            "e-type = 2", "energy_mesh", "t-type = 2", "time_mesh",
-                            "mesh = reg", "cell")
+                            "e-type = 2", f"emin = {self.energy_mesh[0][0]}", f"emax = {self.energy_mesh[0][1]}",
+                            f"ne = {self.energy_mesh[1]}",
+                            "t-type = 2", f"tmin = {self.time_mesh[0][0]}", f"tmax = {self.time_mesh[0][1]}",
+                            f"nt = {self.time_mesh[1]}", "mesh = reg")
 
-    shape = lambda self: ((f"{self.out.index}", f"{self.into.index}", "area"),)
+    shape = ("cell",)
 
-    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_bounds, self.angle_bounds,
-                             self.time_bounds)
+    group_by = lambda self: (self.particles, self.data, self.output, self.factor, self.energy_mesh, self.time_mesh)
     separator = lambda self: self.section_title()
 
-    def restrictions(self):
-        if len(set(self.data)) < len(self.data):
-            raise ValueError(f"Duplicate DumpTime data dump dimension: got {self.data}.")
+_tally_spec = OneOf(IsA(DumpFluence, index=True), IsA(DumpProduction, index=True), IsA(DumpTime, index=True))
+
 
 
 ## DMP-READER
@@ -2324,8 +2355,8 @@ def read_dump(name: str, columns: list[str], return_type: str) -> dict:
 ## RUN-PHITS
 
 
-def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_sections=[], multipliers=[],
-               raw="", outer_void_properties: dict = dict(), **kwargs) -> str:
+def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_sections=[], multipliers=[], super_mirrors=[],
+               mat_time_changes=[], raw="", outer_void_properties: dict = dict(), **kwargs) -> str:
     """Given a situation, produces a corresponding input file.
 
     Required arguments:
@@ -2346,6 +2377,30 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     | raw | A string that's appended to the end of the .inp---do unsupported stuff manually with this.|
     | kwargs | Anything extra is used to create a Parameters() object. |
     """
+    assert (isinstance(cells, PhitsObject) and cells.name == "cell") \
+        or (len(cells) >= 1 and all(map(lambda x: x.name == "cell", cells))), \
+    f"`cells` must be either a cell object or a list of cell objects; got {cells}."
+
+    assert (isinstance(sources, PhitsObject) and sources.name == "source") \
+        or (len(sources) >= 1 and all(map(lambda x: x.name == "source", sources))), \
+    f"`sources` must be either a sources object or a list of source objects; got {sources}."
+
+    assert (isinstance(tallies, PhitsObject) and "t-" in tallies.name) \
+        or (all(map(lambda x: "t-" in x.name, tallies))), \
+    f"`tallies` must be either a tally object or a list of tally objects; got {tallies}."
+
+    assert (isinstance(cross_sections, PhitsObject) and cross_sections.name == "frag_data") \
+        or (all(map(lambda x: x.name == "frag_data", cross_sections))), \
+    f"`cross_sections` must be either a FragData object or a list of FragData objects; got {cross_sections}."
+
+    assert (isinstance(super_mirrors, PhitsObject) and super_mirrors.name == "super_mirror") \
+        or (all(map(lambda x: x.name == "super_mirror", super_mirrors))), \
+    f"`super_mirror` must be either a SuperMirror object or a list of SuperMirror objects; got {super_mirrors}."
+
+    assert (isinstance(mat_time_changes, PhitsObject) and mat_time_changes.name == "mat_time_change") \
+        or (all(map(lambda x: x.name == "mat_time_change", mat_time_changes))), \
+    "`mat_time_change` must be either a MatTimeChange object or a list of MatTimeChange objects; "
+    f"got {mat_time_changes}."
 
     # Problem: you can have different objects that are "essentially the same" appearing in the object tree.
     # Solution: exploit the __eq__ and __hash__ defined on PhitsObject
@@ -2367,7 +2422,8 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     add_to_set(tallies, unique)
     add_to_set(cross_sections, unique)
     add_to_set(multipliers, unique)
-
+    add_to_set(super_mirrors, unique)
+    add_to_set(mat_time_changes, unique)
 
 
     # We now have that if any two PHITS objects A and B have attributes C and D (respectively) such that C == D, C /is/ D.
@@ -2388,7 +2444,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
                     "electromagnetic_field": [],
                     "delta_ray": [],
                     "track_structure": [],
-                    # "super_mirror": [],
+                    "super_mirror": [],
                     "elastic_option": [],
                     "data_max": [],
                     "frag_data": [],
@@ -2444,16 +2500,32 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     # Solution: replace all members of an equivalence class in the object tree with their representative (whose index is defined above).
     representatives = {n: n for n in it.chain.from_iterable(type_divided.values())} # necessary because `unique` doesn't have idx
 
+    def replace(this, that, inside):
+        if inside is this:
+            return that
+        elif isinstance(inside, list) or isinstance(inside, tuple):
+            replaced = tuple()
+            for el in inside:
+                if el is this:
+                    replaced += (that,)
+                else:
+                    replaced += (replace(this, that, el),)
+            return replaced
+        else:
+            return this
+
     def adjust_subobjects(an_obj, ason=(None, None)): # Recursively replace redundant subtypes with the representative in the dict
         if isinstance(an_obj, tuple) or isinstance(an_obj, list):
             for ob in an_obj:
                 if ob is not ason[1]:
-                    adjust_subobjects(ob)
+                    adjust_subobjects(ob, ason=ason)
 
         elif isinstance(an_obj, PhitsObject):
             if ason != (None, None):
                 representative = representatives[an_obj]
-                setattr(ason[1], ason[0], representative)
+                to_check = getattr(ason[1], ason[0])
+                setattr(ason[1], ason[0], replace(an_obj, representatives[an_obj], to_check))
+                
             for name, child in an_obj.__dict__.items():
                 if child is not ason[1]:
                     adjust_subobjects(child, ason=(name, an_obj))
@@ -2463,6 +2535,8 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     adjust_subobjects(tallies)
     adjust_subobjects(cross_sections)
     adjust_subobjects(multipliers)
+    adjust_subobjects(super_mirrors)
+    adjust_subobjects(mat_time_changes)
 
 
     # Check that the whole shebang is valid together
@@ -2538,7 +2612,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
     add_defs("electromagnetic_field")
     add_defs("delta_ray")
     add_defs("track_structure")
-    # add_defs("super_mirror")
+    add_defs("super_mirror")
     add_defs("elastic_option")
     add_defs("data_max")
     add_defs("frag_data")
@@ -2569,7 +2643,7 @@ def make_input(cells, sources, tallies, title: str = str(datetime.now()), cross_
 
 
 def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool = True, filename: str = "phits.inp",
-              return_type: str = "dict", **make_input_kwargs):
+              return_type: str = "dict", injected_files=[], yanked_files=[], yank_to=os.getcwd(), **make_input_kwargs):
     """Given a scenario, calls `make_input` to generate a corresponding input file, runs PHITS on it in a temporary directory,
     and then collects and returns the resulting output as nice Python objects.
 
@@ -2590,12 +2664,18 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
     (helpful in avoiding "I let it run all night and it crashed the minute I left the room" scenarios). |
     | `filename` | The name of the input file on which to call PHITS. Of little utility except for debugging. |
     | `return_type` | Either "dict", "numpy", or "pandas", corresponding to the desired result format. |
+    | `injected_files` | A list of path- or file-like objects to `shutil.copy`/`shutil.copyfileobj` to the temporary directory. |
+    | `yanked_files` | A list of paths relative to the temporary directory which will be copied out to `yank_to` before cleanup. |
+    | `yank_to` | A path to which `yanked_files` will be saved. |
     """
     with tf.TemporaryDirectory() as newdir:
         inp = make_input(cells, sources, tallies, **make_input_kwargs)
         name = os.path.join(newdir, filename)
         with open(os.path.join(newdir, filename), "w") as inp_file:
             inp_file.write(inp)
+
+        for path in injected_files:
+            copy(path, os.path.join(newdir, os.path.basename(path)))
 
         try:
             # TODO: PHITS actualy **DOESN'T FKING SET EXIT CODES ON ERROR** so will have to grep the output for "Error"...
@@ -2629,11 +2709,16 @@ def run_phits(cells, sources, tallies, command: str = "phits", hard_error: bool 
             result[t] = read_dump(dfile, t.data, return_type)
 
 
+        if yanked_files != []:
+            for name in yanked_files:
+                copy(os.path.join(newdir, name), yank_to)
+
         return result
 
 __pdoc__ = dict()
 __pdoc__["builds"] = False
 __pdoc__["slices"] = False
+__pdoc__["builds_right"] = False
 for name, cl in list(sys.modules[__name__].__dict__.items()):
     if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
         __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()

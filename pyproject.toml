@@ -6,16 +6,25 @@ build-backend = "hatchling.build"
 name = "pyphits"
 version = "0.0.1"
 authors = [
-	{ name="Duncan Wilkie", email="dwilk14@lsu.edu"  },
+	{ name="Duncan Wilkie", email="duncanwilkie@gmail.com"  },
 ]
 description = "A Python porcelain for JAEA's Particle Heavy-Ion Transport Code System (PHITS)."
 readme = "README.org"
-requires-pthon = ">=3.7"
+requires-python = ">=3.9"
 classifiers = [
 	    "Programming Language :: Python :: 3",
 	    "License :: OSI Approved :: GPL-3.0-only",
 	    "Operating System :: OS Independent",
 	    ]
+
+keywords = "python simulation monte-carlo phits physics nuclear-physics"
+# TODO: see about removing hard dependency on numpy and pandas
+dependencies = [
+	     "hypothesis >= 6.43",
+	     "numpy >= 1.21",
+	     "pandas >= 1.4",
+	     "fortranformat >=1.2",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/Antigravityd/PyPHITS"
