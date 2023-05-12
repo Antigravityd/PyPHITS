@@ -1,21 +1,20 @@
 ---
 title: 'PyPHITS': A Python porcelain for JAEA's PHITS'
-tags:
-	- Python
-	- physics
-	- nuclear physics
-	- monte carlo
-	- radiation
+tags:- Python
+  - physics
+  - nuclear physics
+  - monte carlo
+  - radiation
 authors:
-	- Duncan Wilkie
-	affiliation: "1, 2, 3"
+  - Duncan Wilkie
+  affiliation: "1, 2, 3"
 affiliations:
-	- name: Undergraduate, Louisiana State University Department of Physics and Astronomy, USA
-	index: 1
-	- name: Undergraduate, Louisiana State University Department of Mathematics, USA
-	index: 2
-	- name: Research Scientist, Atlantis Industries, USA
-	index: 3
+  - name: Undergraduate, Louisiana State University Department of Physics and Astronomy, USA
+  index: 1
+  - name: Undergraduate, Louisiana State University Department of Mathematics, USA
+  index: 2
+  - name: Research Scientist, Atlantis Industries, USA
+  index: 3
 date: 12 May 2023
 bibliography: paper.bib
 ---
