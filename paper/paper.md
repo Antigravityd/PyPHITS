@@ -1,6 +1,7 @@
 ---
 title: 'PyPHITS': A Python porcelain for JAEA's PHITS'
-tags:- Python
+tags:
+  - Python
   - physics
   - nuclear physics
   - monte carlo
