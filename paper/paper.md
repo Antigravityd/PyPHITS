@@ -49,7 +49,7 @@ Any new user of PHITS familiar with Python will be able to focus on the semantic
 Moreover, his strengthened knowledge of Python through use of PHITS will be transferrable to any other Pythonic activities.
 
 Not providing an abstracted interface seems to be an exception to the rule for particle transport codes.
-Geant4 [@allison:2016; @allison:2006; @allison:2003] provides geant4py,
+Geant4 [@allison:2016; @allison:2006; @agostinelli:2003] provides geant4py,
 and FLUKA [@ahdida:2022; @battistoni:2015] has the graphical "flair" environment [@vlachoudis:2009].
 Some people nevertheless use PHITS in preference to these other programs, so correcting what these other projects percieve as a problem
 will bring those advantages to those for whom the interface is too great a cost to bear.
