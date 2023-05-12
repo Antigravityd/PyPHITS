@@ -34,27 +34,27 @@ Such integration is this program's _raison d'être._
 PHITS has its own file format---to use it, one must learn its intricacies, many of which appear to be anachronisms from the days
 when Fortran was spelled with capital letters (its manual is 342 pages, as a rough severity estimate).
 This is a testament to the utility of the software, to the reliability of its implementation, _a la_ Lindy's Law.
-Nevertheless, this remains an impediment to its continued adoption.
+Nevertheless, this remains an impediment to growth of its user base.
 It impacts existing experts too, as mainframe-style programming impedes many interactive and meta-level workflows
-single-user machines have enabled in recent decades.
+that've become common on single-user machines have enabled in recent decades.
 AI integration is the specific example motivating this work: using PHITS simulations alongside machine learning frameworks
 like TensorFlow or Keras proves difficult, as each training step must output to, interpret, and modify several PHITS-specific data formats.
 
 PyPHITS rectifies these issues, by providing an API for interacting with PHITS from Python.
 The language has become a _de facto_ standard choice for many physical, data-analytic, and machine-learning workflows;
-the plethora of extant libraries in the language mean that many of these workflows are now a function-call away,
+the plethora of libraries in the language mean that many of these workflows are now a function-call away,
 rather than requiring a _ad hoc,_ purpose-specific code be written first.
 It also presents a user-interface that's reasonably well-conformant to design standards in the Python ecosystem.
 Any new user of PHITS familiar with Python will be able to focus on the semantics of the program, rather than the syntax of input files.
-Moreover, his strengthened knowledge of Python through use of PHITS will be transferrable to any other program.
+Moreover, his strengthened knowledge of Python through use of PHITS will be transferrable to any other Pythonic activities.
 
 Not providing an abstracted interface seems to be an exception to the rule for particle transport codes.
 Geant4 [@allison:2016; @allison:2006; @allison:2003] provides geant4py,
-and FLUKA [@ahdida2022; @battistoni2015] has the graphical "flair" environment [@vlachoudis:2009].
+and FLUKA [@ahdida:2022; @battistoni:2015] has the graphical "flair" environment [@vlachoudis:2009].
 Some people nevertheless use PHITS in preference to these other programs, so correcting what these other projects percieve as a problem
 will bring those advantages to those for whom the interface is too great a cost to bear.
 
-There is recent work in space medical physics involving PHITS-assisted machine learning .
+There is recent work in space medical physics involving PHITS-assisted machine learning [@taylor:2023].
 The implementations thus far are single-use and poorly-tested, and artificially restrict the search space in interest of
 software engineering expedience.
 This is despite substantial commercial and defense interest in the service such models provide.
