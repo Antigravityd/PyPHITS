@@ -49,12 +49,12 @@ Any new user of PHITS familiar with Python will be able to focus on the semantic
 Moreover, his strengthened knowledge of Python through use of PHITS will be transferrable to any other program.
 
 Not providing an abstracted interface seems to be an exception to the rule for particle transport codes.
-Geant4 [@allison2016; @allison2006; @allison2003] provides geant4py,
-and FLUKA [@ahdida2022; @battistoni2015] has the graphical "flair" environment [@vlachoudis2009].
+Geant4 [@allison2016 provides geant4py,
+and FLUKA  has the graphical "flair" environment.
 Some people nevertheless use PHITS in preference to these other programs, so correcting what these other projects percieve as a problem
 will bring those advantages to those for whom the interface is too great a cost to bear.
 
-There is recent work in space medical physics involving PHITS-assisted machine learning [@taylor2023].
+There is recent work in space medical physics involving PHITS-assisted machine learning .
 The implementations thus far are single-use and poorly-tested, and artificially restrict the search space in interest of
 software engineering expedience.
 This is despite substantial commercial and defense interest in the service such models provide.
