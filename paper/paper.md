@@ -6,11 +6,9 @@ tags:
 	- nuclear physics
 	- monte carlo
 	- radiation
-
 authors:
 	- Duncan Wilkie
 	affiliation: "1, 2, 3"
-
 affiliations:
 	- name: Undergraduate, Louisiana State University Department of Physics and Astronomy, USA
 	index: 1
@@ -18,7 +16,6 @@ affiliations:
 	index: 2
 	- name: Research Scientist, Atlantis Industries, USA
 	index: 3
-
 date: 12 May 2023
 bibliography: paper.bib
 ---
