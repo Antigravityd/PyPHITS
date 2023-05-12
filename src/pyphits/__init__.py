@@ -1,4 +1,7 @@
-"""This is a Python interface to JAEA's [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp)."""
+"""This is the documentation for PyPHITS, a Python interface to JAEA's [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp).
+
+See the [README](https://github.com/Antigravityd/PyPHITS/README.org) for an introduction.
+"""
 
 # TODOs:
 # Counter/multiplier in tally
