@@ -7,7 +7,7 @@ tags:
   - monte carlo
   - radiation
 authors:
-  - Duncan Wilkie
+  - name: Duncan Wilkie
   affiliation: "1, 2, 3"
 affiliations:
   - name: Undergraduate, Louisiana State University Department of Physics and Astronomy, USA
