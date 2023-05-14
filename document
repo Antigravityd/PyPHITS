@@ -1,0 +1,4 @@
+#!/bin/sh
+
+projroot=$(dirname -- "$0")
+pdoc3 --html --force --output-dir $projroot/docs $projroot/src/pyphits && mv $projroot/docs/pyphits/* $projroot/docs/ && rm -r $projroot/docs/pyphits

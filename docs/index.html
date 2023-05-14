@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
 <meta name="generator" content="pdoc 0.10.0" />
 <title>pyphits API documentation</title>
-<meta name="description" content="This is a Python interface to JAEA&#39;s [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp)." />
+<meta name="description" content="This is the documentation for PyPHITS, a third-party Python interface to JAEA&#39;s [Particle Heavy-Ion Transport Code System …" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
 <link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
@@ -22,12 +22,18 @@
 <h1 class="title">Package <code>pyphits</code></h1>
 </header>
 <section id="section-intro">
-<p>This is a Python interface to JAEA's <a href="https://phits.jaea.go.jp">Particle Heavy-Ion Transport Code System (PHITS)</a>.</p>
+<p>This is the documentation for PyPHITS, a third-party Python interface to JAEA's <a href="https://phits.jaea.go.jp">Particle Heavy-Ion Transport Code System (PHITS)</a>.</p>
+<p>See the <a href="https://github.com/Antigravityd/PyPHITS/README.org">README</a> for an introduction.</p>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">&#34;&#34;&#34;This is a Python interface to JAEA&#39;s [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp).&#34;&#34;&#34;
+<pre><code class="python">&#34;&#34;&#34;This is the documentation for PyPHITS, a third-party Python interface to JAEA&#39;s \
+[Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp).
+
+
+See the [README](https://github.com/Antigravityd/PyPHITS/README.org) for an introduction.
+&#34;&#34;&#34;
 
 # TODOs:
 # Counter/multiplier in tally
@@ -35,7 +41,6 @@
 # Dir = iso for spherical shell sources (necessary for CosmicRay to be used properly)
 # readable_remapping
 # nuclide-specific library settings
-# paper
 
 from pyphits.valspec import *
 
@@ -2748,6 +2753,7 @@ __pdoc__ = dict()
 __pdoc__[&#34;builds&#34;] = False
 __pdoc__[&#34;slices&#34;] = False
 __pdoc__[&#34;builds_right&#34;] = False
+__pdoc__[&#34;interval&#34;] = False
 for name, cl in list(sys.modules[__name__].__dict__.items()):
     if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
         __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()
@@ -2784,14 +2790,8 @@ these identifiers are sanitized as follows:</p>
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="pyphits.interval"><code class="name flex">
-<span>def <span class="ident">interval</span></span>(<span>lbd, ubd)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
 <dt id="pyphits.make_input"><code class="name flex">
-<span>def <span class="ident">make_input</span></span>(<span>cells, sources, tallies, title: str = '2023-05-12 17:16:11.794157', cross_sections=[], multipliers=[], super_mirrors=[], mat_time_changes=[], raw='', outer_void_properties: dict = {}, **kwargs) ‑> str</span>
+<span>def <span class="ident">make_input</span></span>(<span>cells, sources, tallies, title: str = '2023-05-14 00:35:00.458732', cross_sections=[], multipliers=[], super_mirrors=[], mat_time_changes=[], raw='', outer_void_properties: dict = {}, **kwargs) ‑> str</span>
 </code></dt>
 <dd>
 <div class="desc"><p>Given a situation, produces a corresponding input file.</p>
@@ -13390,7 +13390,6 @@ def global_restrictions(self, type_divided):
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
-<li><code><a title="pyphits.interval" href="#pyphits.interval">interval</a></code></li>
 <li><code><a title="pyphits.make_input" href="#pyphits.make_input">make_input</a></code></li>
 <li><code><a title="pyphits.read_dump" href="#pyphits.read_dump">read_dump</a></code></li>
 <li><code><a title="pyphits.run_phits" href="#pyphits.run_phits">run_phits</a></code></li>
