@@ -208,15 +208,10 @@ I originally intended to fully support all of the tallies available in PHITS. Ho
 
 The core object model currently doesn't support a few edge cases:
 
-- =[SuperMirror]= (import impredicativity)
-- =[MatTimeChange]= (import impredicativity)
 - Non-tetrahedral =LAT= (just use a Python loop) and  =U= / =FILL= (stumped) options in =[Cell]=
 - Any tally besides =[T-Track]=, =[T-Product]=, or =[T-Time]= with the dump options (it'd require parsing that's too complicated; most of the functionality may be recovered /in post/ anyway.)
 - Some of the grouped row-like data don't support optional arguments (e.g. =non= in the input) because PHITS requires that at least one of the rows in any given column be non-skipped, which is harder to implement checks of than it's worth.
 
-The =run_phits= function doesn't support:
-
-- Passing files into the PHITS execution environment (strings or descriptors?)
 
 PHITS's line length limit constrains machine-generated inputs' complexity. Writing a patch for PHITS's source that puts line-length in =param.inc= would greatly enhance the usability of this tool.
 
@@ -225,9 +220,6 @@ Getting semantic explanations from the PHITS documentation somehow would be nice
 The tests are /extremely/ slow. I don't know if this is because I run them on a stone-age Thinkpad, if there are genuine optimizations to be made, or (most likely) some combination of those.
 
 It would be nice if the Fortran-Python interop would make it possible to write the user-defined sources, cross-sections, functions, and tallies in Python. Similarly, defining the (electro)magnetic field files and other external files via Python would be feasible.
-
-Converting to Julia might make for /far/ cleaner code---pending my finding a property-based testing library for the language.
-
 
 * Assurances
 
@@ -239,7 +231,8 @@ Caveats:
 - There is no guarantee that the program is free of semantics-altering errors—i.e. if a bug substitutes a correct, intended input file for a correct, but unintended input file.
 - There is no guarantee that the descriptive Python errors so-raised aren't too agressive, and prevent the user from accessing some valid PHITS input
 - Certain value-interdependence-based restrictions on =Parameters= objects aren't dealt with (and probably would catastrophically degrade test performance if they were).
-- Objects which require files to be present at runtime cannot be completely tested this way, as generating such files is more trouble than it's worth; there are checks which precede the check for the file's existence, and these can still be tested (one merely must verify that the PHITS error one eventually encounters is of a =FileNotFound= nature). The objects in question are =Tetrahedral=, =MappedMagneticField=, =FragData=, and =MappedElectromagneticField=.
+- Objects which require files to be present at runtime cannot be completely tested this way, as generating such files is more trouble than it's worth; there are checks which precede the check for the file's existence, and these can still be tested (one merely must verify that the PHITS error one eventually encounters is of a =FileNotFound= nature). The objects in question are =Tetrahedral=, =MappedMagneticField=, =MappedElectromagneticField=,
+  =FragData=, and =TetrahedralSource=.
 - The test implementation is more unit than integration—the types are iterated through, generated, and minimal supporting infrastructure for each instance is used to produce an input that tests mostly the type itself. As a result, the implementation may not be robust to errors that arise due to combinations of sections. This is somewhat mitigated by the =Cell=-adjacent objects, whose subobjects are all (save the offenders above) generated and tested in this process.
 - There may be inputs which are over the PHITS line length limit but are otherwise in error. I expect these to be statistically independent, as I'm necessarily ignorant about the nature of "error," but they may well not be.
 
@@ -249,12 +242,8 @@ TODO pending pip
 
 * Docs-For-Docs
 
-For documentation-by-example, see the =ex= folder in the source tree. A detailed API reference is available here.
+For documentation-by-example, see the =ex= folder in the source tree. A detailed API reference is available [[https://antigravityd.github.io/PyPHITS][here]]. Note that this reference is in large part automatically generated, and so may have some quirky explanations at this stage.
 
 ** In-REPL Documentation Features
 
-Python's =help()= function will produce the top-level docstring for any object (not just ours). Calling =syntax_desc()= on any subclass of =PhitsObject= or on =Parameters= (note: classmethod) will produce coarse-grained information about the arguments that function accepts. Look to the PHITS manual if this isn't sufficient. Similarly, =syntax_for= will produce the subset of this information corresponding to a particular (keyword) argument. If you know the PHITS identifier, but not the Python identifier, pass =phits=True=.
-
-* Publication
-
-the Journal of Open Source Software (JOSS) looks like a good option for submitting the final result of the work.
+Python's =help()= function will produce the top-level docstring for any object (not just this package's). Calling =syntax_desc()= on any subclass of =PhitsObject= or on =Parameters= (note: classmethod) will produce coarse-grained information about the arguments that function accepts. Look to the PHITS manual if this isn't sufficient. Similarly, =syntax_for= will produce the subset of this information corresponding to a particular (keyword) argument. If you know the PHITS identifier, but not the Python identifier, pass =phits=True=.

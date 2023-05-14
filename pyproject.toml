@@ -9,15 +9,16 @@ authors = [
 	{ name="Duncan Wilkie", email="duncanwilkie@gmail.com"  },
 ]
 description = "A Python porcelain for JAEA's Particle Heavy-Ion Transport Code System (PHITS)."
-readme = "README.org"
+readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
 	    "Programming Language :: Python :: 3",
-	    "License :: OSI Approved :: GPL-3.0-only",
+	    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+	    "Topic :: Scientific/Engineering :: Physics",
 	    "Operating System :: OS Independent",
 	    ]
 
-keywords = "python simulation monte-carlo phits physics nuclear-physics"
+keywords = ["python", "simulation", "monte-carlo", "phits", "physics", "nuclear-physics"]
 # TODO: see about removing hard dependency on numpy and pandas
 dependencies = [
 	     "hypothesis >= 6.43",
@@ -31,6 +32,8 @@ dependencies = [
 # Documentation
 "Bug Tracker" = "https://github.com/Antigravityd/PyPHITS/issues"
 
-	    
-
-
+[tool.pytest.ini_options]
+addopts = [
+	"--import-mode=importlib",
+]
+pythonpath = "src"	   

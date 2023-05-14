@@ -1,9 +1,6 @@
 import sys
 import os
 import re
-sys.path.append(os.getcwd())
-
-
 
 from hypothesis import given, settings, assume, HealthCheck, Phase
 from hypothesis.strategies import *
@@ -132,30 +129,55 @@ def integrated(cells, sources, tallies, cross_sections, super_mirrors, mat_time_
     print("done")
 
 
+def do_units():
+    import pyphits
+
+    # Parameters is too slow/too much integration dependence, and the distributions don't make sense to test in isolation.
+    omit = ["Parameters", "TimeDistribution", "AngleDistribution", "EnergyDistribution"]
+    # These require file IO. It should however be checked that they generate only the expected FileNotFound-type errors.
+    omit += ["Tetrahedral", "MappedMagneticField", "MappedElectromagneticField", "FragData", "TetrahedralSource"]
+    # # Progressively uncomment these during debugging to avoid waiting on redundant tests
+    # omit += ["Transform", "Plane", "PointPlane", "ParallelPlane", "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic",
+    #          "Torus", "Box", "EllipticalCylinder", "Spheroid", "Wedge", "TetrahedronBox", "MagneticField", "NeutronMagneticField",
+    #          "ElectromagneticField", "DeltaRay", "TrackStructure", "ElasticOption", "Importance", "WeightWindow", "WWBias",
+    #          "ForcedCollisions", "RepeatedCollisions", "RegionName", "Counter", "Timer", "DataMax", "MatNameColor",
+    #          "Material",  "Void", "OuterVoid", "Cell", "SuperMirror", "MatTimeChange", "Cylindrical", "Rectangular", "Gaussian",
+    #          "GaussianSlices", "Parabolic",
+    #          "ParabolicSlices", "Spherical", "Beam", "Conical", "TriangularPrism", "SurfaceSource", # "DumpFluence", "DumpProduction",
+    #          # "DumpTime"
+    #          ]
+    breakpoint()
+    if "Parameters" not in omit:
+        test_a(parameters.Parameters)
+        for name, cls in list(pyphits.__dict__.items()):
+            if name not in omit:
+                if isinstance(cls, type) and cls.__module__ == pyphits.__name__ and issubclass(cls, PhitsObject) and cls != PhitsObject:
+                    test_a(cls)
+
+
 
 # TODO: fix bug appearing in Cell with material with two 1H slipping past the check
 if __name__ == '__main__':
     import pyphits
-    if len(sys.argv) > 1 and sys.argv[1] == "unit":
-        # Parameters is too slow/too much integration dependence, and the distributions don't make sense to test in isolation.
-        omit = ["Parameters", "TimeDistribution", "AngleDistribution", "EnergyDistribution"]
-        # These require file IO. It should however be checked that they generate only the expected FileNotFound-type errors.
-        omit += ["Tetrahedral", "MappedMagneticField", "MappedElectromagneticField", "FragData", "TetrahedralSource"]
-        # Progressively uncomment these during debugging to avoid waiting on redundant tests
-        omit += ["Transform", "Plane", "PointPlane", "ParallelPlane", "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic",
-                 "Torus", "Box", "EllipticalCylinder", "Spheroid", "Wedge", "TetrahedronBox", "MagneticField", "NeutronMagneticField",
-                 "ElectromagneticField", "DeltaRay", "TrackStructure", "ElasticOption", "Importance", "WeightWindow", "WWBias",
-                 "ForcedCollisions", "RepeatedCollisions", "RegionName", "Counter", "Timer", "DataMax", "MatNameColor",
-                 "Material",  "Void", "OuterVoid", "Cell", "SuperMirror", "MatTimeChange", "Cylindrical", "Rectangular", "Gaussian",
-                 "GaussianSlices", "Parabolic",
-                 "ParabolicSlices", "Spherical", "Beam", "Conical", "TriangularPrism", "SurfaceSource", # "DumpFluence", "DumpProduction",
-                 # "DumpTime"
-                 ]
-        if "Parameters" not in omit:
-            test_a(parameters.Parameters)
-            for name, cls in list(pyphits.__dict__.items()):
-                if name not in omit:
-                    if isinstance(cls, type) and cls.__module__ == pyphits.__name__ and issubclass(cls, PhitsObject) and cls != PhitsObject:
-                        test_a(cls)
-    elif len(sys.argv) > 1 and sys.argv[1] == "integration":
-        integrated()
+
+    # Parameters is too slow/too much integration dependence, and the distributions don't make sense to test in isolation.
+    omit = ["Parameters", "TimeDistribution", "AngleDistribution", "EnergyDistribution"]
+    # These require file IO. It should however be checked that they generate only the expected FileNotFound-type errors.
+    omit += ["Tetrahedral", "MappedMagneticField", "MappedElectromagneticField", "FragData", "TetrahedralSource"]
+    # # Progressively uncomment these during debugging to avoid waiting on redundant tests
+    # omit += ["Transform", "Plane", "PointPlane", "ParallelPlane", "Sphere", "Cylinder", "Cone", "SimpleConic", "GeneralConic",
+    #          "Torus", "Box", "EllipticalCylinder", "Spheroid", "Wedge", "TetrahedronBox", "MagneticField", "NeutronMagneticField",
+    #          "ElectromagneticField", "DeltaRay", "TrackStructure", "ElasticOption", "Importance", "WeightWindow", "WWBias",
+    #          "ForcedCollisions", "RepeatedCollisions", "RegionName", "Counter", "Timer", "DataMax", "MatNameColor",
+    #          "Material",  "Void", "OuterVoid", "Cell", "SuperMirror", "MatTimeChange", "Cylindrical", "Rectangular", "Gaussian",
+    #          "GaussianSlices", "Parabolic",
+    #          "ParabolicSlices", "Spherical", "Beam", "Conical", "TriangularPrism", "SurfaceSource", # "DumpFluence", "DumpProduction",
+    #          # "DumpTime"
+    #          ]
+    breakpoint()
+    if "Parameters" not in omit:
+        test_a(parameters.Parameters)
+        for name, cls in list(pyphits.__dict__.items()):
+            if name not in omit:
+                if isinstance(cls, type) and cls.__module__ == pyphits.__name__ and issubclass(cls, PhitsObject) and cls != PhitsObject:
+                    test_a(cls)

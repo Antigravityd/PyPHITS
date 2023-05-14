@@ -1,4 +1,6 @@
-"""This is the documentation for PyPHITS, a Python interface to JAEA's [Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp).
+"""This is the documentation for PyPHITS, a third-party Python interface to JAEA's \
+[Particle Heavy-Ion Transport Code System (PHITS)](https://phits.jaea.go.jp).
+
 
 See the [README](https://github.com/Antigravityd/PyPHITS/README.org) for an introduction.
 """
@@ -9,7 +11,6 @@ See the [README](https://github.com/Antigravityd/PyPHITS/README.org) for an intr
 # Dir = iso for spherical shell sources (necessary for CosmicRay to be used properly)
 # readable_remapping
 # nuclide-specific library settings
-# paper
 
 from pyphits.valspec import *
 
@@ -2722,6 +2723,7 @@ __pdoc__ = dict()
 __pdoc__["builds"] = False
 __pdoc__["slices"] = False
 __pdoc__["builds_right"] = False
+__pdoc__["interval"] = False
 for name, cl in list(sys.modules[__name__].__dict__.items()):
     if type(cl) == type and issubclass(cl, PhitsObject) and cl != PhitsObject:
         __pdoc__[cl.__name__] = cl.__doc__ + cl.syntax_desc() if cl.__doc__ else cl.syntax_desc()
