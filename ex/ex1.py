@@ -1,12 +1,6 @@
 from math import *
 import numpy as np
-from run_phits import *
-from material import *
-from cell import *
-from surface import *
-from tally import *
-from source import *
-
+from pyphits import *
 
 # A dead whale, modelled by concentric spherical annuli of an increasingly less-concentrated carbon-water mixture,
 # has swallowed an orphaned 241Am RTG source and is sinking into the ocean.

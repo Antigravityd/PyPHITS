@@ -208,18 +208,16 @@ I originally intended to fully support all of the tallies available in PHITS. Ho
 
 The core object model currently doesn't support a few edge cases:
 
-- Non-tetrahedral =LAT= (just use a Python loop) and  =U= / =FILL= (stumped) options in =[Cell]=
-- Any tally besides =[T-Track]=, =[T-Product]=, or =[T-Time]= with the dump options (it'd require parsing that's too complicated; most of the functionality may be recovered /in post/ anyway.)
-- Some of the grouped row-like data don't support optional arguments (e.g. =non= in the input) because PHITS requires that at least one of the rows in any given column be non-skipped, which is harder to implement checks of than it's worth.
-
+- Non-tetrahedral =LAT= (just use a Python loop) and  =U= / =FILL= (stumped) options in =[Cell]=.
+- Any tally besides =[T-Track]=, =[T-Product]=, or =[T-Time]= with the dump options (it'd require parsing that's too complicated; most of the functionality may be recovered /in post/ anyway).
+- Radioisotope and cosmic-ray source energy distributions (can the implemented in Python).
+- Some of the grouped row-like data don't support optional arguments (e.g. =non= in the input) because PHITS requires that at least one of the rows in any given column be non-skipped, which is harder to implement checks for than it's worth.
 
 PHITS's line length limit constrains machine-generated inputs' complexity. Writing a patch for PHITS's source that puts line-length in =param.inc= would greatly enhance the usability of this tool.
 
-Getting semantic explanations from the PHITS documentation somehow would be nice.
+Importing semantic explanations from the PHITS documentation into the Python documentation somehow would be nice.
 
 The tests are /extremely/ slow. I don't know if this is because I run them on a stone-age Thinkpad, if there are genuine optimizations to be made, or (most likely) some combination of those.
-
-It would be nice if the Fortran-Python interop would make it possible to write the user-defined sources, cross-sections, functions, and tallies in Python. Similarly, defining the (electro)magnetic field files and other external files via Python would be feasible.
 
 * Assurances
 
