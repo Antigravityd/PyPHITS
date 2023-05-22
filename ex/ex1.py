@@ -10,7 +10,7 @@ from pyphits import *
 mats = [Material([("C", i/100), ("H", (2/3)*(100-i)/100), ("O", (1/3)*(100-i)/100)]) for i in range(55,100)]
 
 # Or loops
-cells = [Cell([Sphere(1)], mats[0], -1)]
+cells = [Cell(regions=[Sphere(1, center=(0, 0, 0))], material=mats[0], -1)]
 for i in range(1,11):
     new = Cell([Sphere(i+1), Sphere(i, inside=False)], mats[i], -1)
     cells.append(new)

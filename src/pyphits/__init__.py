@@ -534,12 +534,12 @@ class PhitsObject:
     def __init__(self, *args,  **kwargs):
         """Arguments are interpreted according to `PhitsObject.syntax`, and then any leftovers in `kwargs` are used to create a `Parameters`
         object, which is then assigned to a `parameters` attribute."""
-        assert self.name in self.names, f"Unrecognized PHITS type {self.name} in PhitsObject initialization."
+        assert self.name in self.names, f"Unrecognized PHITS section {self.name} in construction of PhitsObject type {self.__name__}."
 
         # Handle required args
         required = list(map(lambda tup: tup[0], self.required_args()))
 
-        assert len(args) == len(required), f"Wrong number of positional arguments specified in the definition of {self} object."
+        assert len(args) > len(required), f"Wrong number of positional arguments in initialization of {self.__name__}."
         for idx, arg in enumerate(args):
             # Validate first
             details = self.syntax[required[idx]]
@@ -560,7 +560,7 @@ class PhitsObject:
         # Handle optional args
         for arg in self.syntax:
             valspec, position = self.syntax[arg][1], self.syntax[arg][2]
-            if position == None:
+            if position == None or arg in kwargs:
                 if arg in kwargs:
                     # Validate first
                     if kwargs[arg] is not None:
@@ -583,15 +583,18 @@ class PhitsObject:
                     setattr(self, arg, None)
 
 
+        # Make sure we haven't missed required argument
+        for arg in required:
+            assert getattr(self, arg) is not None, f"Failed to provide required argument {arg} in initialization of {self.__name__}."
+
+        # Set object cycles up correctly
         for attr in self.subobjects:
             if hasattr(self, attr):
                 child = getattr(self, attr)
                 if child is not None:
                     setattr(child, self.name, self)
 
-        # for attr in self.superobjects:
-        #     setattr(self, attr, None) # subobjects are instantiated before superobjects
-
+        # Make any extra agruments parameters
         remaining = {k: v for k, v in kwargs.items() if k not in self.syntax and k not in self.subobjects}
         if remaining:
             self.parameters = Parameters(**remaining)
@@ -918,7 +921,7 @@ class Sphere(PhitsObject):
     "A sphere of radius R centered on (x0, y0, z0)."
     name = "surface"
     syntax = surface_common | {"radius": (None, PosReal(), 0),
-                       "center": (None, Tuple(Real(), Real(), Real()), 1)}
+                               "center": (None, Tuple(Real(), Real(), Real()), 1)}
 
     shape = lambda self: ((f"*{self.index}" if self.reflective else
                            (f"+{self.index}" if self.white else f"{self.index}"),
